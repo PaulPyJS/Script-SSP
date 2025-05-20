@@ -1,0 +1,34 @@
+{
+  "keywords_valides": [
+    "Code Artelia → Code Artelia",
+    "benzene → all",
+    "hap → all",
+    "BTEX",
+    "C10-C40 (8)",
+    "C10-C40 (4)"
+  ],
+  "groupes_personnalises": {
+    "BTEX": [
+      "ethylbenzene",
+      "m+p-xylene",
+      "o-xylene",
+      "toluene"
+    ],
+    "C10-C40 (8)": [
+      "c10 - c12",
+      "c12 - c16",
+      "c16 - c20",
+      "c20 - c24",
+      "c24 - c28",
+      "c28 - c32",
+      "c32 - c36",
+      "c36 - c40"
+    ],
+    "C10-C40 (4)": [
+      "nc10 - nc16",
+      "nc16 - nc22",
+      "nc22 - nc30",
+      "nc30 - nc40"
+    ]
+  }
+}

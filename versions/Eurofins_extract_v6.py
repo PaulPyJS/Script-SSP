@@ -1,0 +1,320 @@
+import pandas as pd
+import unicodedata
+import re
+from collections import defaultdict
+
+import json
+import sys
+import os
+
+
+# === Script : EXTRACT VALUE WITH KEYWORD IN AN EXCEL FORMAT - TABLEURS EUROFINS ===
+# = v1 : Test import from Excel raw DF-Excel and keyword-based extract
+# = v1.5 : Multiple keywords test
+# = v2 : Normalizing text and splitting data into keywords based on value or sum
+# = v3 : Extraction validated for general keyword with random pick
+# = v4 : Adapting the script to allow HAP to be separated from Naphtalene/HAP
+# = v5 : DEBUG
+# = v6 : Adding SUM calculation based on JSON file to allow local memory
+#
+excel_path = sys.argv[1]
+keywords_file = sys.argv[2]
+
+with open(keywords_file, "r", encoding="utf-8") as f:
+    general_keywords = json.load(f)
+
+file_path = "00_INPUT/Résultats Eurofins 06052025.xlsm"
+sheet_name = "Comparer les échantillons"
+
+df_raw = pd.read_excel(file_path, sheet_name=sheet_name, header=None)
+print("✅ Fichier chargé.")
+
+# Based on Excel format from Eurofins, without blank parts
+# Starting with CodeEuro/CodeArt/Date + Data from L5-C4 index 4,3
+headers = ['Code Eurofins', 'Code Artelia', 'Date prélèvement'] + df_raw.iloc[4, 3:].tolist()
+
+header_data_only = [str(col).strip() for col in df_raw.iloc[4, 3:].tolist()]
+header_index_map = {i: header_data_only[i] for i in range(len(header_data_only))}
+
+# Data values from line 6, index 5
+df = df_raw.iloc[5:].copy()
+df.columns = headers
+df = df.reset_index(drop=True)
+
+df = df.dropna(axis=1, how='all')
+df.columns = pd.Index([str(c).strip() for c in df.columns])
+
+header_index_to_df_col_index = {}
+
+for i, col in enumerate(header_data_only):
+    if i + 3 >= len(df.columns):
+        continue
+
+    df_col_name = df.columns[i + 3]
+    for i in range(len(header_data_only)):
+        if i + 3 < len(df.columns):
+            header_index_to_df_col_index[i] = i + 3
+
+
+
+
+
+
+# ==== CLEANING FUNCTIONS ====
+#
+# Normalizing text in the headers but will also be applied to text user input
+def normalize(text):
+    if pd.isna(text):
+        return ""
+    text = str(text).lower()
+    text = unicodedata.normalize('NFD', text).encode('ascii', 'ignore').decode('utf-8')
+    # Adding spaces before and after to be able to use it to separate word like ethylbenzene
+    return " " + text.strip() + " "
+
+def clean_tokens(text):
+    if pd.isna(text):
+        return []
+    text = str(text).lower()
+    text = unicodedata.normalize('NFD', text).encode('ascii', 'ignore').decode('utf-8')  # remove accents
+    return re.findall(r'[a-z0-9]+', text)  # keep only alphanum words
+
+# ==================== DEBUG FUNCTION =============================
+# Used to convert index to Excel columns
+def col_idx_to_excel_letter(idx):
+    letter = ''
+    while idx >= 0:
+        letter = chr(idx % 26 + 65) + letter
+        idx = idx // 26 - 1
+    return letter
+# ==================== DEBUG FUNCTION =============================
+
+
+def charger_groupes_parametres(FICHIER_GROUPES_PARAMETRES = "sum.json"):
+    if not os.path.exists(FICHIER_GROUPES_PARAMETRES):
+        print(f"⚠️ Fichier '{FICHIER_GROUPES_PARAMETRES}' non trouvé. Création d'un fichier vide.")
+        with open(FICHIER_GROUPES_PARAMETRES, "w") as f:
+            json.dump({}, f)
+        return {}
+    with open(FICHIER_GROUPES_PARAMETRES, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def sauvegarder_groupes_parametres(groupes, FICHIER_GROUPES_PARAMETRES = "sum.json"):
+    with open(FICHIER_GROUPES_PARAMETRES, "w", encoding="utf-8") as f:
+        json.dump(groupes, f, indent=2, ensure_ascii=False)
+
+
+
+
+
+# ==== PROCESSING FUNCTIONS ====
+#
+# Looking for the general keywords to match headers with it - returning index of columns
+def get_matching_columns(headers, keywords):
+    matched = {kw: [] for kw in keywords}
+    summed = {kw: [] for kw in keywords}
+
+    # Adding keywords for global data
+    sum_keywords = {"somme", "total", "addition", "synthese", "synthèse"}
+
+    for i, col in enumerate(headers):
+        # No % data
+        if "%" in str(col):
+            continue
+
+        tokens_col = clean_tokens(col)
+
+        for kw in keywords:
+            tokens_kw = clean_tokens(kw)
+            # print(f"🔍 TEST kw='{kw}' | col='{col}' | tokens_kw={tokens_kw} | tokens_col={tokens_col}")
+            if all(tok in tokens_col for tok in tokens_kw):
+                # print(f"✅ VRAI MATCH : kw='{kw}' match avec col='{col}'")
+                matched[kw].append(i)
+                col_norm = col.lower().replace(" ", "")
+                if any(word in tokens_col for word in sum_keywords) or "c5-c10" in col_norm or "c10-c40" in col_norm:
+                    summed[kw].append(i)
+
+    return matched, summed
+
+def afficher_colonnes_detectees(columns_dict, df, titre="Colonnes détectées"):
+    print(f"\n📊 {titre} :")
+    for kw, index_list in columns_dict.items():
+        if index_list:
+            display = []
+            for idx in index_list:
+                try:
+                    df_col_index = idx + 3  # Décalage logique vers df.columns
+                    if df_col_index >= len(df.columns):
+                        continue
+                    col_name = df.columns[df_col_index]
+                    col_letter = col_idx_to_excel_letter(df_col_index)
+                    display.append(f"{col_letter} ({col_name})")
+                except Exception as e:
+                    print(f"⚠️ Erreur pour index '{idx}': {e}")
+                    continue
+            print(f"✅ {kw} → {display}")
+
+
+def extraire_valeurs_generales(df, matched_columns, general_keywords):
+    resultats = {}
+    for kw in general_keywords:
+        if kw.lower() == "hap":
+            continue
+        if matched_columns.get(kw):
+            for idx in matched_columns[kw]:
+                df_col_index = idx + 3
+                if df_col_index >= len(df.columns):
+                    continue
+                col_name = df.columns[df_col_index]
+                for i in range(len(df)):
+                    try:
+                        val = df.at[i, col_name]
+                        if isinstance(val, pd.Series):
+                            val = val[val.notna()]
+                            val = val[val.astype(str).str.strip() != ""]
+                            if val.empty:
+                                continue
+                            val = val.iloc[0]
+                        elif pd.isna(val) or str(val).strip() == "":
+                            continue
+                    except Exception:
+                        continue
+
+                    val_str = str(val).strip()
+                    if val_str.startswith("<"):
+                        val_str = f"<LQ ({val_str})"
+
+                    artelia = df.at[i, 'Code Artelia']
+                    if pd.isna(artelia):
+                        continue
+
+                    if artelia not in resultats:
+                        resultats[artelia] = {}
+
+                    resultats[artelia][kw] = val_str
+    return resultats
+
+def extraire_valeurs_hap(df, matched_columns):
+    resultats = {}
+    def normalize(text):
+        text = str(text).lower()
+        return unicodedata.normalize('NFD', text).encode('ascii', 'ignore').decode('utf-8')
+
+    for idx in matched_columns.get("hap", []):
+        df_col_index = idx + 3
+        if df_col_index >= len(df.columns):
+            continue
+        col_name = df.columns[df_col_index]
+        col_name_norm = normalize(col_name)
+        true_kw = "hap + naphtalène" if "naphtalene" in col_name_norm else "hap"
+        # print(f"\n🔍 Colonne détectée : '{col_name}' → Classée comme '{true_kw}'")
+        for i in range(len(df)):
+            try:
+                val = df.at[i, col_name]
+                if isinstance(val, pd.Series):
+                    val = val[val.notna()]
+                    val = val[val.astype(str).str.strip() != ""]
+                    if val.empty:
+                        continue
+                    val = val.iloc[0]
+                elif pd.isna(val) or str(val).strip() == "":
+                    continue
+            except Exception:
+                continue
+
+            val_str = str(val).strip()
+            if val_str.startswith("<"):
+                val_str = f"<LQ ({val_str})"
+
+            artelia = df.at[i, 'Code Artelia']
+            if pd.isna(artelia):
+                continue
+
+            if artelia not in resultats:
+                resultats[artelia] = {}
+
+            resultats[artelia][true_kw] = val_str
+            # print(f"✅ Ajout : Artelia = {artelia} | {true_kw} = {val_str}")
+    return resultats
+
+def afficher_groupement_par_artelia(df, resultats_artelia):
+    print("\n📥 Résumé regroupé par code Artelia :")
+    tous_codes_artelia = df['Code Artelia'].dropna().unique()
+
+    for artelia in tous_codes_artelia:
+        mesures = resultats_artelia.get(artelia, {})
+        if not mesures:
+            print(f"Artelia: {artelia} | Pas d'analyse détectée")
+        else:
+            ligne = f"Artelia: {artelia}"
+            for comp, val in mesures.items():
+                ligne += f" | {comp} = {val}"
+            print(ligne)
+
+    print("\n🔎 DEBUG — Valeurs HAP par échantillon :")
+    for artelia in tous_codes_artelia:
+        hap_val = resultats_artelia.get(artelia, {}).get("hap", "—")
+        hap_naphtalene_val = resultats_artelia.get(artelia, {}).get("hap + naphtalène", "—")
+        print(f"[HAP] - Artelia: {artelia} | HAP = {hap_val} | HAP + naphtalène = {hap_naphtalene_val}")
+
+
+def additionner_parametres(df, resultats_artelia, liste_parametres, nom_somme="somme personnalisée"):
+    for artelia in df['Code Artelia'].dropna().unique():
+        total = 0.0
+        valeurs_utilisees = 0
+
+        for param in liste_parametres:
+            valeur = resultats_artelia.get(artelia, {}).get(param)
+            if valeur and not str(valeur).strip().startswith("<"):
+                try:
+                    total += float(str(valeur).replace(",", "."))
+                    valeurs_utilisees += 1
+                except ValueError:
+                    print(f"⚠️ Valeur non convertible ignorée : '{valeur}' pour '{param}' (échantillon {artelia})")
+                    continue
+
+        if valeurs_utilisees > 0:
+            resultats_artelia[artelia][nom_somme] = round(total, 3)
+
+
+
+# = PROCESSING PART = #
+#
+sum = charger_groupes_parametres()
+
+matched_columns, summed_columns = get_matching_columns(df.columns[3:], general_keywords)
+
+afficher_colonnes_detectees(matched_columns, df, titre="Colonnes détectées par mot-clé")
+afficher_colonnes_detectees(summed_columns, df, titre="Colonnes qui semblent déjà contenir une somme")
+
+resultats_generaux = extraire_valeurs_generales(df, matched_columns, general_keywords)
+resultats_hap = extraire_valeurs_hap(df, matched_columns)
+
+resultats_artelia = defaultdict(dict)
+for dico in [resultats_generaux, resultats_hap]:
+    for k, v in dico.items():
+        resultats_artelia[k].update(v)
+
+
+for nom_somme, liste_parametres in sum.items():
+    additionner_parametres(df, resultats_artelia, liste_parametres, nom_somme)
+
+afficher_groupement_par_artelia(df, resultats_artelia)
+
+
+
+# = EXPORTING PART
+#
+# df_export = pd.DataFrame.from_dict(resultats_artelia, orient='index')
+#
+# # Réinitialisation de l’index (Code Artelia devient une colonne)
+# df_export.reset_index(inplace=True)
+# df_export.rename(columns={"index": "Code Artelia"}, inplace=True)
+#
+# # On s’assure que tous les codes Artelia sont inclus, même sans valeurs
+# df_export_complet = pd.DataFrame({'Code Artelia': tous_codes_artelia})
+# df_export = pd.merge(df_export_complet, df_export, on='Code Artelia', how='left')
+#
+# # ✅ Export dans un fichier Excel
+# output_file = "résumé_extraction_artelia.xlsx"
+# df_export.to_excel(output_file, index=False)
+# print(f"\n✅ Résumé exporté dans le fichier : {output_file}")
