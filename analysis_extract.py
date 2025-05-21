@@ -163,10 +163,6 @@ class BaseExtract:
             print("DEBUG EXPORT", artelia, "BTEX =", self.resultats_artelia[artelia].get("BTEX"))
         df_export = pd.DataFrame.from_dict(self.resultats_artelia, orient='index')
 
-        for nom_groupe in self.groupes_personnalises:
-            if nom_groupe not in colonnes_finales:
-                colonnes_finales.append(nom_groupe)
-
         if "Code Artelia" in df_export.columns:
             df_export.rename(columns={"Code Artelia": "Code Artelia_orig"}, inplace=True)
 
@@ -198,8 +194,9 @@ class BaseExtract:
 
         print(f"✅ Export terminé : {nom_fichier}")
 
-        with open("résumé_extraction.json", "w", encoding="utf-8") as f:
-            json.dump(self.resultats_artelia, f, indent=2, ensure_ascii=False)
+        # =========================== DEBUG ======================================
+        # with open("resume_extraction.json", "w", encoding="utf-8") as f:
+        #     json.dump(self.resultats_artelia, f, indent=2, ensure_ascii=False)
 
     def _extract_hap(self):
         hap_matched = self.matched_columns.get("hap", [])
@@ -338,12 +335,11 @@ class RowsExtract(BaseExtract):
         self.row_config = row_config or {}
 
     def load_data(self):
-        from extract_utils import cell_to_index
-
         df_raw = pd.read_excel(self.excel_path, sheet_name=self.sheet_name, header=None)
         r = self.row_config
 
-        noms_echantillons = df_raw.iloc[r["row_noms"], r["data_start_col"]:].tolist()
+        noms_echantillons = df_raw.iloc[r["nom_row"], r["data_start_col"]:].tolist()
+
         ligne_limites = df_raw.iloc[r["row_limites"], r["data_start_col"]:].tolist() if r.get(
             "row_limites") is not None else []
 
@@ -362,12 +358,11 @@ class RowsExtract(BaseExtract):
             valeurs.drop(columns=colonnes_a_supprimer, inplace=True)
             noms_echantillons = [n for i, n in enumerate(noms_echantillons) if i not in colonnes_a_exclure]
 
-        cell_param = r.get("col_parametres", "A1").strip().upper()
-        row_param, col_param = cell_to_index(cell_param)
+        row_param = r["param_row"]
+        col_param = r["param_col"]
 
         valeurs.columns = noms_echantillons
-
-        index_raw = df_raw.iloc[row_param :, col_param].tolist()
+        index_raw = df_raw.iloc[row_param:, col_param].tolist()
 
         if len(index_raw) > valeurs.shape[0]:
             print("📏 [DEBUG] Troncature des noms de paramètres")

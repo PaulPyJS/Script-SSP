@@ -103,11 +103,8 @@ def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, resulta
                 from extract_utils import cell_to_index
 
                 if extraction_type.lower() == "lignes":
-
                     r_nom, c_nom = cell_to_index(config_extraction["cell_nom_echantillon"])
                     r_data, c_data = cell_to_index(config_extraction["cell_data_start"])
-                    r_param, c_param = cell_to_index(config_extraction["cell_parametres"])
-
                     r_limite, _ = (None, None)
                     cell_limite = config_extraction.get("cell_limite")
                     if cell_limite and str(cell_limite).strip().lower() != "none":
@@ -123,14 +120,12 @@ def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, resulta
                                 print(f"⚠️ Optionnel ignoré ({k}): valeur invalide '{v}' ({e})")
 
                     config = {
-                        "nom_row": r_nom,
-                        "nom_col": c_nom,
-                        "param_row": r_param,
-                        "param_col": c_param,
+                        "row_noms": r_nom,
                         "row_limites": r_limite,
                         "data_start_row": r_data,
                         "data_start_col": c_data,
                         "optionnels": optionnels,
+                        "col_parametres": config_extraction.get("col_parametres", "A")  # lettre
                     }
                 elif extraction_type.lower() == "colonnes":
                     r_param, c_param = cell_to_index(config_extraction["cell_parametres"])

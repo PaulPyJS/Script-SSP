@@ -1,7 +1,23 @@
 {
-  "cell_parametres": "D5",
-  "cell_nom_echantillon": "B6",
-  "cell_data_start": "D6",
-  "cell_limite": "None",
-  "optionnels": {}
+  "keywords_valides": [
+    "Code Artelia → all",
+    "benzene → all",
+    "hap → all",
+    "BTEX",
+    "C10-C40 (4)"
+  ],
+  "groupes_personnalises": {
+    "BTEX": [
+      "toluene → all",
+      "ethylbenzene → all",
+      "o-xylene → all",
+      "m+p-xylene → all"
+    ],
+    "C10-C40 (4)": [
+      "nc10 - nc16 → all",
+      "nc16 - nc22 → all",
+      "nc22 - nc30 → all",
+      "nc30 - nc40 → all"
+    ]
+  }
 }

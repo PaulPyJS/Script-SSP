@@ -1,7 +1,7 @@
 {
   "cell_nom_echantillon": "H8",
-  "cell_data_start": "H14",
-  "cell_limite": "G14",
-  "col_parametres": "B14",
-  "optionnels": {}
+  "cell_parametres": "B11",
+  "cell_data_start": "H11",
+  "optionnels": {},
+  "cell_limite": null
 }

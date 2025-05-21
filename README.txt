@@ -1,13 +1,15 @@
 # GeoChemical Analysis Extractor
 
-This desktop application allows you to extract, select, and export specific geochemical analysis parameters from Excel files provided by Eurofins (or other labs in future versions).
+This desktop application allows you to extract, select, and export specific geochemical analysis parameters from heterogeneous Excel files (initially based on multiple Eurofins and Agrolab tabs)
 
 ### Features
 
-- Load your Excel analysis file
+- Load your Excel analysis file 
 - Select or edit keyword filters
-- Automatically detect matching columns
-- Choose what to export via interface
+- Input your own extract type based on rows or columns type + cells where the data start /!\ NOT HEADERS /!\
+	- Save your extract_type in .json to reuse it 
+- Choose what to export via interface and create groups to add values
+	- Save your export_type in .json to reuse it 
 - Export results as a clean `.xlsx` file
 
 
@@ -20,12 +22,15 @@ This desktop application allows you to extract, select, and export specific geoc
 2. In the first window:
    - Select a **keyword file** (`.json`) or create one using `Modify`
    - Load your **Excel file** 
-   - Select the **extraction type** (currently only available: `Eurofins`)
+   - Select the **extraction type** in Rows if your parameters are displayed row by row (or in Columns if param displayed col by col)
+   - Adapt the type depending on your exact Excel format by input Cells of the first data for each mandatory parameters
+   - Add optional parameters if required (still in dev v2.2)
    - Click **EXTRACT**
 3. In the second window:
    - See all detected keywords and matching parameters
    - Move the parameters you want to export to the right side
-   - Click **GENERATE JSON** to save your selection and being able to reuse it (optional)
+   - Create your own personal groups to be able to add parameters and create sum
+   - Click **GENERATE JSON** to save your selection and groups and being able to reuse it 
    - Click **EXTRACT TO EXCEL** to export your results
 
 
@@ -33,18 +38,31 @@ This desktop application allows you to extract, select, and export specific geoc
 
 
 ## Files and Folders
-
-| File                        | Description                              |
-|-----------------------------|------------------------------------------|
-| `main.exe`                  | Launchable application                   |
-| `config_extract.json`       | Last used keyword list (auto loaded)     |
-| `sum.json` (optional)       | For custom grouped sums                  |
-| `export_analyses_*.xlsx`    | Your final Excel output                  |
+  
+| File                         | Description                                             |
+|------------------------------|---------------------------------------------------------|
+| `main.exe`                   | The application launcher                                |
+| `config_extract_*.json`      | Excel extraction file for UI 2                          |
+| `config_type_*.json`         | Type extraction file for UI 1                           |
+| `temp_keywords.json`         | Temporary file used during extraction                   |
+| `final_keywords.json`        | Temporary file used for Excel extraction                |
+| `last_*`                     | Multiple files used to keep memory in between session   |
 
 
 # ======================================================================================================================================================
 
 
-## Need help?
+## 📦 Requirements (if running from source)
 
-For assistance or feedback, please contact Paul Ancian at @paul.a88@hotmail.fr
+- Python 3.10+
+- `pandas >= 1.3`
+- `openpyxl >= 3.0`
+
+(Install with `pip install -r requirements.txt`)
+
+---
+
+## ❓ Need help?
+
+Contact: **Paul Ancian**  
+📧 paul.a88@hotmail.fr

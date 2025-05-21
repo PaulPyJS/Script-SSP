@@ -174,6 +174,10 @@ class ExtractApp:
             except Exception as e:
                 messagebox.showerror("Erreur", f"Impossible de lire les feuilles :\n{e}")
 
+
+
+    # NEW v2.2 = STEP ASKING USER FOR CELLS DATA - First cell with value, not headers
+    #
     def ouvrir_popup_type(self):
         extraction_type = self.type_var.get()
         if extraction_type == "Lignes":
@@ -181,29 +185,26 @@ class ExtractApp:
                 self.row_config = row_config
                 with open(FICHIER_LAST_TYPE_CONFIG, "w", encoding="utf-8") as f:
                     json.dump(self.row_config, f, indent=2, ensure_ascii=False)
-                messagebox.showinfo("✅ Configuration enregistrée",
-                                    "Les paramètres pour l'extraction 'Lignes' ont été enregistrés.")
 
-            self.create_row_extract_popup(self.master, continuer_extraction, config_init=self.row_config)
+            self.create_type_extract_popup(self.master, continuer_extraction, config_init=self.row_config)
 
         elif extraction_type == "Colonnes":
             def continuer_extraction(col_config):
                 self.col_config = col_config
                 with open(FICHIER_LAST_TYPE_CONFIG, "w", encoding="utf-8") as f:
                     json.dump(self.col_config, f, indent=2, ensure_ascii=False)
-                messagebox.showinfo("✅ Configuration enregistrée",
-                                    "Les paramètres pour l'extraction 'Colonnes' ont été enregistrés.")
 
-            # Créer une popup quasi identique à create_row_extract_popup mais adaptée aux colonnes
-            self.create_column_extract_popup(self.master, continuer_extraction, config_init=self.col_config)
+            self.create_type_extract_popup(self.master, continuer_extraction, config_init=self.col_config)
 
         else:
             messagebox.showinfo("Info", f"Aucune configuration requise pour le type : {extraction_type}")
 
-    def create_row_extract_popup(self, parent, callback, config_init=None):
+
+
+    def create_type_extract_popup(self, parent, callback, config_init=None):
         popup = tk.Toplevel(parent)
-        popup.title("Configuration Agrolab (Lignes)")
-        popup.geometry("240x400")
+        popup.title("Configuration : Type")
+        popup.geometry("240x300")
         popup.grab_set()
 
         entries = {}
@@ -223,18 +224,15 @@ class ExtractApp:
 
         # Principals
         create_labeled_entry(frame_main, "ID Artelia :", "cell_nom_echantillon", row=0)
-        create_labeled_entry(frame_main, "Valeurs :", "cell_data_start", row=1)
-        create_labeled_entry(frame_main, "Limites (opt.) :", "cell_limite", row=2)
-        create_labeled_entry(frame_main, "Noms Paramètres :", "col_parametres", row=3)
+        create_labeled_entry(frame_main, "Noms Paramètres :", "cell_parametres", row=1)
+        create_labeled_entry(frame_main, "Valeurs :", "cell_data_start", row=2)
+
 
         tk.Label(frame_main, text="Exemple : G8", fg="gray").grid(
-            row=4, column=0, columnspan=2, padx=10, pady=(0, 5)
-        )
-        tk.Label(frame_main, text="COL. appelle une lettre uniquement", fg="gray").grid(
-            row=5, column=0, columnspan=2, padx=10, pady=(0, 5)
+            row=3, column=0, columnspan=2, padx=10, pady=(0, 5)
         )
 
-        # Optionals
+        # Optionals, user choose name and cells
         def add_optional_field():
             popup_opt = tk.Toplevel(popup)
             popup_opt.title("Ajouter un champ optionnel")
@@ -250,6 +248,7 @@ class ExtractApp:
             tk.Label(popup_opt, text="Cellule (ex: F9)").pack(pady=5)
             tk.Entry(popup_opt, textvariable=var_cell, width=8).pack(pady=5)
 
+
             def ajouter():
                 name = var_name.get().strip()
                 cell = var_cell.get().strip()
@@ -263,11 +262,12 @@ class ExtractApp:
             tk.Button(popup_opt, text="Ajouter", command=ajouter).pack(pady=10)
 
         tk.Button(frame_main, text="Ajouter champ optionnel", command=add_optional_field) \
-            .grid(row=6, column=0, columnspan=2, pady=5)
+            .grid(row=4, column=0, columnspan=2, pady=5)
+
 
         optional_fields = {}
         frame_optional = tk.LabelFrame(frame_main, text="Champs optionnels", padx=10, pady=10)
-        frame_optional.grid(row=7, column=0, columnspan=2, padx=10, pady=5, sticky="w")
+        frame_optional.grid(row=5, column=0, columnspan=2, padx=10, pady=5, sticky="w")
 
         for nom, cell in valeurs_par_defaut.get("optionnels", {}).items():
             optional_fields[nom] = cell
@@ -284,91 +284,7 @@ class ExtractApp:
         tk.Button(frame_main, text="Valider", command=valider, bg="green", fg="white") \
             .grid(row=8, column=0, columnspan=2, pady=10)
 
-    def create_column_extract_popup(self, parent, callback, config_init=None):
-        popup = tk.Toplevel(parent)
-        popup.title("Configuration Colonnes Extract")
-        popup.geometry("240x450")  # un peu plus haut pour l'optionnel
-        popup.grab_set()
 
-        entries = {}
-        valeurs_par_defaut = config_init or {}
-
-        def create_labeled_entry(frame, label_text, key, row):
-            var = tk.StringVar()
-            var.set(valeurs_par_defaut.get(key, ""))
-            tk.Label(frame, text=label_text, anchor="w").grid(row=row, column=0, sticky="w", padx=(10, 5), pady=5)
-            entry = tk.Entry(frame, textvariable=var, width=8)
-            entry.grid(row=row, column=1, sticky="w", pady=5)
-            entries[key] = var
-
-        frame_main = tk.Frame(popup)
-        frame_main.columnconfigure(1, weight=1)
-        frame_main.pack(fill="both", expand=True, padx=10, pady=10)
-
-        # Champs principaux
-        create_labeled_entry(frame_main, "Cellule Nom Paramètres :", "cell_parametres", 0)
-        create_labeled_entry(frame_main, "Cellule Nom Échantillons :", "cell_nom_echantillon", 1)
-        create_labeled_entry(frame_main, "Cellule Début Données :", "cell_data_start", 2)
-        create_labeled_entry(frame_main, "Cellule Limites (opt.) :", "cell_limite", 3)
-
-        tk.Label(frame_main, text="Exemple : G8", fg="gray").grid(row=4, column=0, columnspan=2, padx=10, pady=(0, 5))
-        tk.Label(frame_main, text="Les paramètres sont à droite de la cellule fournie.", fg="gray").grid(row=5,
-                                                                                                         column=0,
-                                                                                                         columnspan=2,
-                                                                                                         padx=10)
-        tk.Label(frame_main, text="Les noms sont sous la cellule fournie.", fg="gray").grid(row=6, column=0,
-                                                                                            columnspan=2, padx=10)
-
-        # --- Optionnels ---
-        optional_fields = {}
-        frame_optional = tk.LabelFrame(frame_main, text="Champs optionnels", padx=10, pady=10)
-        frame_optional.grid(row=7, column=0, columnspan=2, padx=10, pady=5, sticky="w")
-
-        for nom, cell in valeurs_par_defaut.get("optionnels", {}).items():
-            optional_fields[nom] = cell
-            tk.Label(frame_optional, text=f"{nom} : {cell}").pack(anchor="w")
-
-        def add_optional_field():
-            popup_opt = tk.Toplevel(popup)
-            popup_opt.title("Ajouter un champ optionnel")
-            popup_opt.geometry("200x170")
-            popup_opt.grab_set()
-
-            var_name = tk.StringVar()
-            var_cell = tk.StringVar()
-
-            tk.Label(popup_opt, text="Nom du champ (ex: code_labo)").pack(pady=5)
-            tk.Entry(popup_opt, textvariable=var_name, width=15).pack(pady=5)
-
-            tk.Label(popup_opt, text="Cellule (ex: F9)").pack(pady=5)
-            tk.Entry(popup_opt, textvariable=var_cell, width=8).pack(pady=5)
-
-            def ajouter():
-                name = var_name.get().strip()
-                cell = var_cell.get().strip()
-                if name and cell:
-                    optional_fields[name] = cell
-                    tk.Label(frame_optional, text=f"{name} : {cell}").pack(anchor="w")
-                    popup_opt.destroy()
-                else:
-                    messagebox.showerror("Erreur", "Veuillez remplir les deux champs.")
-
-            tk.Button(popup_opt, text="Ajouter", command=ajouter).pack(pady=10)
-
-        tk.Button(frame_main, text="Ajouter champ optionnel", command=add_optional_field) \
-            .grid(row=8, column=0, columnspan=2, pady=5)
-
-        def valider():
-            config = {k: v.get().strip() for k, v in entries.items()}
-            config["optionnels"] = optional_fields
-            if config.get("cell_limite", "") == "":
-                config["cell_limite"] = None
-            popup.destroy()
-            callback(config)
-
-        tk.Button(frame_main, text="Valider", command=valider, bg="green", fg="white") \
-            .grid(row=9, column=0, columnspan=2, pady=10)
-        
     def get_current_config(self):
         extraction_type = self.type_var.get().lower()
         if extraction_type == "colonnes":
@@ -410,7 +326,6 @@ class ExtractApp:
                     messagebox.showerror("Erreur", "La configuration pour 'Colonnes' doit être un dictionnaire JSON.")
                     return
                 self.col_config = config
-            messagebox.showinfo("Succès", f"Configuration chargée depuis :\n{path}")
         except Exception as e:
             messagebox.showerror("Erreur", f"Impossible de charger la configuration :\n{e}")
 
@@ -447,78 +362,37 @@ class ExtractApp:
             }, f, indent=2, ensure_ascii=False)
 
         try:
+            cell_param = config_extraction.get("cell_parametres", "A1")
+            cell_nom = config_extraction.get("cell_nom_echantillon", "A1")
+            cell_data_start = config_extraction.get("cell_data_start", "A1")
+
+            r_param, c_param = cell_to_index(cell_param)
+            r_nom, c_nom = cell_to_index(cell_nom)
+            r_data, c_data = cell_to_index(cell_data_start)
+
+            optionnels_brut = config_extraction.get("optionnels", {})
+            optionnels = {}
+            for k, v in optionnels_brut.items():
+                if isinstance(v, str) and v.strip() and v.strip().lower() != "none":
+                    try:
+                        optionnels[k] = cell_to_index(v)
+                    except Exception as e:
+                        print(f"⚠️ Optionnel ignoré ({k}): valeur invalide '{v}' ({e})")
+
+            config = {
+                "param_row": r_param,
+                "param_col": c_param,
+                "nom_row": r_nom,
+                "nom_col": c_nom,
+                "data_start_row": r_data,
+                "data_start_col": c_data,
+                "optionnels": optionnels
+            }
+
             if extraction_type.lower() == "colonnes":
-                cell_param = config_extraction.get("cell_parametres", "A1")
-                cell_nom = config_extraction.get("cell_nom_echantillon", "A1")
-                cell_data_start = config_extraction.get("cell_data_start", "A1")
-                cell_limite = config_extraction.get("cell_limite")
-
-                # Conversion ici pour colonnes comme pour lignes
-                r_param, c_param = cell_to_index(cell_param)
-                r_nom, c_nom = cell_to_index(cell_nom)
-                r_data, c_data = cell_to_index(cell_data_start)
-                r_limite, c_limite = (None, None)
-                if cell_limite and cell_limite.strip().lower() != "none":
-                    r_limite, c_limite = cell_to_index(cell_limite)
-
-                optionnels_brut = config_extraction.get("optionnels", {})
-                optionnels = {}
-                for k, v in optionnels_brut.items():
-                    if isinstance(v, str) and v.strip() and v.strip().lower() != "none":
-                        try:
-                            optionnels[k] = cell_to_index(v)
-                        except Exception as e:
-                            print(f"⚠️ Optionnel ignoré ({k}): valeur invalide '{v}' ({e})")
-
-                config = {
-                    "param_row": r_param,
-                    "param_col": c_param,
-                    "nom_row": r_nom,
-                    "nom_col": c_nom,
-                    "data_start_row": r_data,
-                    "data_start_col": c_data,
-                    "limite_row": r_limite,
-                    "limite_col": c_limite,
-                    "optionnels": optionnels
-                }
-
                 extractor = ColumnsExtract(self.excel_file, FICHIER_TEMP_KEYWORDS, sheet_name, col_config=config)
-
             elif extraction_type.lower() == "lignes":
-                # Utiliser get() avec fallback
-                cell_nom = config_extraction.get("cell_nom_echantillon", "A1")
-                cell_data_start = config_extraction.get("cell_data_start", "A1")
-                cell_limite = config_extraction.get("cell_limite", None)
-                cell_parametres = config_extraction.get("col_parametres", "A")
-
-                r_nom, c_nom = cell_to_index(cell_nom)
-                r_data, c_data = cell_to_index(cell_data_start)
-                r_limite, _ = (None, None)
-                if isinstance(cell_limite, str) and cell_limite.strip().lower() != "none":
-                    r_limite, _ = cell_to_index(cell_limite)
-                else:
-                    r_limite = None
-
-                optionnels_brut = config_extraction.get("optionnels", {})
-                optionnels = {}
-                for k, v in optionnels_brut.items():
-                    if isinstance(v, str) and v.strip() and v.strip().lower() != "none":
-                        try:
-                            optionnels[k] = cell_to_index(v)
-                        except Exception as e:
-                            print(f"⚠️ Optionnel ignoré ({k}): valeur invalide '{v}' ({e})")
-
-                config = {
-                    "row_noms": r_nom,
-                    "row_limites": r_limite,
-                    "data_start_row": r_data,
-                    "data_start_col": c_data,
-                    "optionnels": optionnels,
-                    "col_parametres": cell_parametres
-                }
-
                 extractor = RowsExtract(self.excel_file, FICHIER_TEMP_KEYWORDS, sheet_name, row_config=config)
-
             else:
                 messagebox.showerror("Erreur", f"Type d'extraction '{extraction_type}' non supporté.")
                 return

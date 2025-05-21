@@ -1,2 +1,2 @@
-pandas
-openpyxl
+pandas>=1.3
+openpyxl>=3.0
