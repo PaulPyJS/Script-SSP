@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 import json
+import sys
 import os
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
@@ -9,14 +10,22 @@ from analysis_extract import ColumnsExtract, RowsExtract
 from ui_post_extract import ouvrir_ui_post_extract
 from extract_utils import cell_to_index
 
+if getattr(sys, 'frozen', False):
+    BASE_DIR = os.path.dirname(sys.executable)
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+DOSSIER_DATA = os.path.join(BASE_DIR, "00_Cache")
+os.makedirs(DOSSIER_DATA, exist_ok=True)
+
 # UI 1
-FICHIER_SESSION = "last_session.json"
-FICHIER_TEMP_KEYWORDS = "temp_keywords.json"
+FICHIER_SESSION = os.path.join(DOSSIER_DATA, "last_session.json")
+FICHIER_TEMP_KEYWORDS = os.path.join(DOSSIER_DATA, "temp_keywords.json")
 TYPES_EXTRACTION = ["Colonnes", "Lignes"]
 
 # UI 2
-FICHIER_LAST_CONFIG = "last_config_extract.json"
-FICHIER_LAST_TYPE_CONFIG = "last_type_config.json"
+FICHIER_LAST_CONFIG = os.path.join(DOSSIER_DATA, "last_config_extract.json")
+FICHIER_LAST_TYPE_CONFIG = os.path.join(DOSSIER_DATA, "last_type_config.json")
 
 
 # === Script : MAIN UI - TABLEURS MULTIPLES ===
@@ -36,7 +45,7 @@ class ExtractApp:
     def __init__(self, master):
         self.master = master
         master.title("Analyses géochimiques")
-        master.geometry("300x400")
+        master.geometry("300x450")
         master.resizable(False, False)
 
         self.keyword_file = ""
@@ -97,6 +106,9 @@ class ExtractApp:
 
         # BOUTON EXTRACT
         tk.Button(self.master, text="EXTRACT", bg="green", fg="white", font=("Segoe UI", 10, "bold"), command=self.lancer_extraction).pack(pady=10)
+
+        tk.Label(self.master, text="© Paul Ancian – 2025", font=("Segoe UI", 7), fg="gray") \
+            .pack(side="bottom", pady=(5, 10))
 
     def charger_keywords(self):
         file_path = filedialog.askopenfilename(filetypes=[("JSON Files", "*.json")])
@@ -444,12 +456,12 @@ class ExtractApp:
         except Exception as e:
             print(f"⚠️ Erreur chargement session : {e}")
 
-        # Recharger la config extraction selon le type choisi
+
         if os.path.exists(FICHIER_LAST_TYPE_CONFIG):
             try:
                 with open(FICHIER_LAST_TYPE_CONFIG, "r", encoding="utf-8") as f:
                     config = json.load(f)
-                # Tu peux aussi enregistrer le dernier type sélectionné dans un fichier séparé et charger ici, sinon tu fais les deux
+
                 if self.type_var.get().lower() == "lignes":
                     self.row_config = config
                     print("🔁 Configuration lignes rechargée :", self.row_config)

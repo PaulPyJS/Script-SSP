@@ -2,8 +2,18 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 import json
 import os
+import sys
 
-FICHIER_LAST_CONFIG = "last_config_extract.json"
+if getattr(sys, 'frozen', False):
+    BASE_DIR = os.path.dirname(sys.executable)
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+DOSSIER_DATA = os.path.join(BASE_DIR, "00_Cache")
+os.makedirs(DOSSIER_DATA, exist_ok=True)
+
+FICHIER_LAST_CONFIG = os.path.join(DOSSIER_DATA, "last_config_extract.json")
+temp_json = os.path.join(DOSSIER_DATA, "final_keywords.json")
 
 
 def save_last_config(path):
@@ -176,7 +186,7 @@ def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, resulta
             messagebox.showwarning("Aucun mot-clé", "Veuillez sélectionner au moins un mot-clé.")
             return
 
-        temp_json = "final_keywords.json"
+
         with open(temp_json, "w", encoding="utf-8") as f:
             json.dump({
                 "keywords_valides": mots,
@@ -225,7 +235,6 @@ def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, resulta
             fenetre.destroy()
             afficher_groupes()
 
-        # Création de la fenêtre
         fenetre = tk.Toplevel()
         fenetre.title("Créer / Modifier un groupe")
         tk.Label(fenetre, text="Nom du groupe :").pack(pady=5)
@@ -234,7 +243,6 @@ def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, resulta
         if nom:
             entry_nom.insert(0, nom)
 
-        # Zone de sélection des mots-clés
         tk.Label(fenetre, text="Mots-clés disponibles :").pack()
         listbox = tk.Listbox(fenetre, selectmode=tk.MULTIPLE, width=40, height=10)
         listbox.pack(padx=10, pady=5)
@@ -309,7 +317,7 @@ def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, resulta
     fenetre = tk.Toplevel()
 
     fenetre.title("Sélection des paramètres à extraire")
-    fenetre.geometry("550x700")
+    fenetre.geometry("550x750")
 
     config_path = tk.StringVar(value="config_extract.json")
     groupes = {}
@@ -379,10 +387,6 @@ def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, resulta
 
 
 
-    # ========================================================================================================
-    # RESULTS DIRECT FROM EUROFINS_EXTRACT ================================ NEED ADJUSTMENT FOR MULTIPLE CASES
-    # ========================================================================================================
-
     def afficher_ligne_random():
         try:
             import random
@@ -429,12 +433,11 @@ def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, resulta
     tk.Button(frame_bottom, text="💾 GÉNÉRER JSON", width=20, command=generer_config).pack(side=tk.LEFT, padx=20)
     tk.Button(frame_bottom, text="📤 EXTRAIRE EN EXCEL", width=20, command=extraire_en_excel).pack(side=tk.LEFT, padx=20)
 
-
+    tk.Label(fenetre, text="© Paul Ancian – 2025", font=("Segoe UI", 7), fg="gray") \
+        .pack(side="bottom", pady=(5, 10))
 
 
     # == INIT ==
-    tous_keywords = list(matched_columns.keys())
-    colonnes_fixes = ["Code Eurofins", "Code Artelia", "Date prélèvement"]
     affichage_mapping = {}
     libelles_formates = []
 

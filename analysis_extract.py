@@ -104,13 +104,12 @@ class BaseExtract:
 
                 valeur = None
 
-                # Chercher dans resultats_artelia[artelia] avec toutes les variantes
                 if version_all and version_all in self.resultats_artelia[artelia]:
                     valeur = self.resultats_artelia[artelia][version_all]
                 elif base in self.resultats_artelia[artelia]:
                     valeur = self.resultats_artelia[artelia][base]
 
-                # Ajouter à la somme si c’est un nombre valide
+
                 if valeur and not str(valeur).strip().startswith("<"):
                     try:
                         total += float(str(valeur).replace(",", "."))
