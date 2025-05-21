@@ -26,9 +26,7 @@
     "nc16 - nc22",
     "nc22 - nc30",
     "nc30 - nc40",
-    "c6-c8",
-    "c8-c10",
-    "xylene"
+    "test"
   ],
   "groupes_personnalises": {}
 }
