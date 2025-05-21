@@ -1,7 +1,10 @@
 {
   "keywords_valides": [
     "Code Artelia → all",
-    "hap → all"
+    "benzene → all",
+    "hap → all",
+    "C10-C40 (4)",
+    "BTEX"
   ],
   "groupes_personnalises": {
     "BTEX": [

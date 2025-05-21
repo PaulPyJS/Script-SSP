@@ -7,6 +7,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 
 from analysis_extract import ColumnsExtract, RowsExtract
 from ui_post_extract import ouvrir_ui_post_extract
+from extract_utils import cell_to_index
 
 # UI 1
 FICHIER_SESSION = "last_session.json"
@@ -104,9 +105,15 @@ class ExtractApp:
         self.keyword_file = file_path
         try:
             with open(file_path, "r", encoding="utf-8") as f:
-                self.keywords = json.load(f)
-                if not isinstance(self.keywords, list):
-                    raise ValueError("Le fichier JSON doit contenir une liste.")
+                data = json.load(f)
+
+                if isinstance(data, list):
+                    self.keywords = data
+                elif isinstance(data, dict) and "keywords_valides" in data:
+                    self.keywords = data["keywords_valides"]
+                else:
+                    raise ValueError("Format de fichier JSON non reconnu.")
+
                 self.label_keywords.config(text=os.path.basename(file_path), fg="black")
                 self.sauvegarder_session()
         except Exception as e:
@@ -361,6 +368,7 @@ class ExtractApp:
 
         tk.Button(frame_main, text="Valider", command=valider, bg="green", fg="white") \
             .grid(row=9, column=0, columnspan=2, pady=10)
+        
     def get_current_config(self):
         extraction_type = self.type_var.get().lower()
         if extraction_type == "colonnes":
@@ -423,10 +431,14 @@ class ExtractApp:
             return
 
         config_extraction = self.get_current_config()
+        if not isinstance(config_extraction, dict):
+            messagebox.showerror("Erreur", "La configuration d'extraction est invalide (non dict).")
+            return
 
         if not config_extraction:
             messagebox.showwarning("Configuration manquante",
                                    "Veuillez d'abord configurer l'extraction via le bouton 'Configurer'.")
+            return
 
         with open(FICHIER_TEMP_KEYWORDS, "w", encoding="utf-8") as f:
             json.dump({
@@ -435,8 +447,6 @@ class ExtractApp:
             }, f, indent=2, ensure_ascii=False)
 
         try:
-            from extract_utils import cell_to_index
-
             if extraction_type.lower() == "colonnes":
                 cell_param = config_extraction.get("cell_parametres", "A1")
                 cell_nom = config_extraction.get("cell_nom_echantillon", "A1")
@@ -444,13 +454,22 @@ class ExtractApp:
                 cell_limite = config_extraction.get("cell_limite")
 
                 # Conversion ici pour colonnes comme pour lignes
-                from extract_utils import cell_to_index
                 r_param, c_param = cell_to_index(cell_param)
                 r_nom, c_nom = cell_to_index(cell_nom)
                 r_data, c_data = cell_to_index(cell_data_start)
-                r_limite, c_limite = cell_to_index(cell_limite) if cell_limite else (None, None)
+                r_limite, c_limite = (None, None)
+                if cell_limite and cell_limite.strip().lower() != "none":
+                    r_limite, c_limite = cell_to_index(cell_limite)
 
-                # Construire config avec indices au lieu de cellules brutes
+                optionnels_brut = config_extraction.get("optionnels", {})
+                optionnels = {}
+                for k, v in optionnels_brut.items():
+                    if isinstance(v, str) and v.strip() and v.strip().lower() != "none":
+                        try:
+                            optionnels[k] = cell_to_index(v)
+                        except Exception as e:
+                            print(f"⚠️ Optionnel ignoré ({k}): valeur invalide '{v}' ({e})")
+
                 config = {
                     "param_row": r_param,
                     "param_col": c_param,
@@ -460,7 +479,7 @@ class ExtractApp:
                     "data_start_col": c_data,
                     "limite_row": r_limite,
                     "limite_col": c_limite,
-                    "optionnels": {k: cell_to_index(v) for k, v in config_extraction.get("optionnels", {}).items()}
+                    "optionnels": optionnels
                 }
 
                 extractor = ColumnsExtract(self.excel_file, FICHIER_TEMP_KEYWORDS, sheet_name, col_config=config)
@@ -470,13 +489,24 @@ class ExtractApp:
                 cell_nom = config_extraction.get("cell_nom_echantillon", "A1")
                 cell_data_start = config_extraction.get("cell_data_start", "A1")
                 cell_limite = config_extraction.get("cell_limite", None)
-                cell_parametres = config_extraction.get("col_parametres", "A")  # lettre attendue
+                cell_parametres = config_extraction.get("col_parametres", "A")
 
                 r_nom, c_nom = cell_to_index(cell_nom)
                 r_data, c_data = cell_to_index(cell_data_start)
-                r_limite, _ = cell_to_index(cell_limite) if cell_limite else (None, None)
+                r_limite, _ = (None, None)
+                if isinstance(cell_limite, str) and cell_limite.strip().lower() != "none":
+                    r_limite, _ = cell_to_index(cell_limite)
+                else:
+                    r_limite = None
 
-                optionnels = {k: cell_to_index(v) for k, v in config_extraction.get("optionnels", {}).items()}
+                optionnels_brut = config_extraction.get("optionnels", {})
+                optionnels = {}
+                for k, v in optionnels_brut.items():
+                    if isinstance(v, str) and v.strip() and v.strip().lower() != "none":
+                        try:
+                            optionnels[k] = cell_to_index(v)
+                        except Exception as e:
+                            print(f"⚠️ Optionnel ignoré ({k}): valeur invalide '{v}' ({e})")
 
                 config = {
                     "row_noms": r_nom,
@@ -498,6 +528,10 @@ class ExtractApp:
             extractor.extract()
 
             print("Résultat extrait:", extractor.resultats_artelia)
+
+            if extractor.df is None or extractor.df.empty:
+                messagebox.showwarning("Extraction vide", "Aucune donnée extraite depuis le fichier.")
+                return
 
             ouvrir_ui_post_extract(
                 extractor.get_matched_columns(),

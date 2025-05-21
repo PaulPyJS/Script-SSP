@@ -16,7 +16,8 @@ from extract_utils import normalize, clean_tokens, extraire_valeur, formater_val
     # = v1.6 : Adding SUM calculation based on JSON file to allow local memory
     # = v1.7 : Link to UI and using json for keywords
 # = v2.0 : PASSAGE FORMAT CLASSES DEPUIS EUROFINS_EXTRACT.PY
-    # = v2.1 : Ajout classe type AGROLAB
+    # = v2.1 : Adding class type AGROLAB
+    # = v2.2 : Using Rows and Columns from user to configure type of table - suppressing Agrolab/Eurofins type
 #
 class BaseExtract:
     def __init__(self, excel_path, config_path, sheet_name=None):
@@ -33,22 +34,37 @@ class BaseExtract:
     def load_keywords(self):
         with open(self.config_path, "r", encoding="utf-8") as f:
             data = json.load(f)
+
             if isinstance(data, dict):
                 self.colonnes_finales_export = data.get("keywords_valides", [])
                 self.groupes_personnalises = data.get("groupes_personnalises", {})
 
-                self.keywords_valides = list({kw.split("→")[0].strip() for kw in self.colonnes_finales_export})
             elif isinstance(data, list):
+                # ancien format simple : liste plate
                 self.colonnes_finales_export = data
-                self.keywords_valides = data
                 self.groupes_personnalises = {}
+
             else:
                 raise ValueError("Format de configuration JSON non reconnu.")
 
+            if all(isinstance(kw, str) for kw in self.colonnes_finales_export):
+                self.keywords_valides = [
+                    kw.split("→")[0].strip() if "→" in kw else kw
+                    for kw in self.colonnes_finales_export
+                    if not kw.startswith("Code Artelia →")
+                ]
+            else:
+                self.keywords_valides = list({
+                    kw.split("→")[0].strip()
+                    for kw in self.colonnes_finales_export
+                    if isinstance(kw, str) and "→" in kw
+                })
+
         for group in self.groupes_personnalises.values():
             for param in group:
-                if param not in self.keywords_valides:
-                    self.keywords_valides.append(param)
+                param_clean = param.split("→")[0].strip()
+                if param_clean not in self.keywords_valides:
+                    self.keywords_valides.append(param_clean)
 
         for kw in self.keywords_valides:
             if "→ all" in kw:
@@ -78,7 +94,23 @@ class BaseExtract:
             valeurs_utilisees = 0
 
             for param in liste_parametres:
-                valeur = self.resultats_artelia[artelia].get(param)
+                # Nettoyer et normaliser les noms
+                if "→" in param:
+                    base = param.split("→")[0].strip()
+                    version_all = f"{base} → all"
+                else:
+                    base = param.strip()
+                    version_all = None
+
+                valeur = None
+
+                # Chercher dans resultats_artelia[artelia] avec toutes les variantes
+                if version_all and version_all in self.resultats_artelia[artelia]:
+                    valeur = self.resultats_artelia[artelia][version_all]
+                elif base in self.resultats_artelia[artelia]:
+                    valeur = self.resultats_artelia[artelia][base]
+
+                # Ajouter à la somme si c’est un nombre valide
                 if valeur and not str(valeur).strip().startswith("<"):
                     try:
                         total += float(str(valeur).replace(",", "."))
@@ -87,7 +119,9 @@ class BaseExtract:
                         continue
 
             if valeurs_utilisees > 0:
-                self.resultats_artelia[artelia][nom_somme] = round(total, 3)
+                total_round = round(total, 3)
+                self.resultats_artelia[artelia][nom_somme] = total_round
+                print(f"DEBUG {artelia} – {nom_somme} : {total_round}")
 
     def _merge_column(self, df_export, col_name, colonnes_finales):
         if col_name not in self.df.columns:
@@ -123,15 +157,15 @@ class BaseExtract:
         nom_base = os.path.splitext(os.path.basename(self.excel_path))[0]
         horodatage = pd.Timestamp.today().strftime('%Y%m%d_%H%M')
         nom_fichier = os.path.join(dossier, f"{nom_base}_résumé_extraction_{horodatage}.xlsx")
-        colonnes_finales = []
 
+        colonnes_finales = []
+        for artelia in self.resultats_artelia:
+            print("DEBUG EXPORT", artelia, "BTEX =", self.resultats_artelia[artelia].get("BTEX"))
         df_export = pd.DataFrame.from_dict(self.resultats_artelia, orient='index')
 
         for nom_groupe in self.groupes_personnalises:
-            if nom_groupe in df_export.columns and nom_groupe not in colonnes_finales:
+            if nom_groupe not in colonnes_finales:
                 colonnes_finales.append(nom_groupe)
-            else:
-                print(f"⚠️ Groupe ignoré (non présent dans colonnes) : {nom_groupe}")
 
         if "Code Artelia" in df_export.columns:
             df_export.rename(columns={"Code Artelia": "Code Artelia_orig"}, inplace=True)
@@ -221,7 +255,6 @@ class ColumnsExtract(BaseExtract):
     def __init__(self, excel_path, config_path, sheet_name=None, col_config=None):
         super().__init__(excel_path, config_path, sheet_name)
         self.col_config = col_config or {}
-        print("DEBUG ColumnsExtract col_config:", self.col_config)
 
     def load_data(self):
         df_raw = pd.read_excel(self.excel_path, sheet_name=self.sheet_name, header=None)
@@ -236,14 +269,14 @@ class ColumnsExtract(BaseExtract):
         r_limite = c.get("limite_row")
         c_limite = c.get("limite_col")
 
-        noms_echantillons = df_raw.iloc[r_nom + 1:, c_nom].dropna().astype(str).tolist()
-        noms_parametres = df_raw.iloc[r_param, c_param + 1:].dropna().astype(str).tolist()
+        noms_echantillons = df_raw.iloc[r_nom:, c_nom].dropna().astype(str).tolist()
+        noms_parametres = df_raw.iloc[r_param, c_param:].dropna().astype(str).tolist()
 
         limites = []
         if r_limite is not None and c_limite is not None:
             limites = df_raw.iloc[r_limite, c_limite + 1:c_limite + 1 + len(noms_parametres)].tolist()
 
-        valeurs = df_raw.iloc[r_data:, c_data + 1:c_data + 1 + len(noms_parametres)].copy()
+        valeurs = df_raw.iloc[r_data:, c_data:c_data + len(noms_parametres)].copy()
         valeurs.columns = noms_parametres
         min_lignes = min(len(noms_echantillons), len(valeurs))
         valeurs = valeurs.iloc[:min_lignes].copy()
@@ -256,19 +289,26 @@ class ColumnsExtract(BaseExtract):
         self.limites = limites
         self.df = df
 
+
     def extract(self):
         matched_columns = self.get_matching_columns(self.df.columns)
         self.matched_columns = matched_columns
 
         for i, row in self.df.iterrows():
             artelia = str(row["Nom échantillon"]).strip()
+            if i == 0:
+                print(f"🔢 Première ligne self.df :\n{row}\n")
 
             for kw, col_infos in matched_columns.items():
+                print(f"🔍 MOT-CLÉ = {kw}")
+                for col_idx, nom_col in col_infos:
+                    print(f"  ↪ col_idx = {col_idx}, nom_col = {nom_col}")
                 if f"{kw} → all" in self.keywords_valides:
-                    for col_idx, nom_col in col_infos:
+                    for col_idx, nom_col in matched_columns[kw]:
                         val = extraire_valeur(self.df.iloc[i, col_idx])
-                        if val is not None:
-                            self.resultats_artelia[artelia][f"{kw} → all"] = formater_valeur(val)
+                        if val is not None and not str(val).strip().startswith("<"):
+                            val_format = formater_valeur(val)
+                            self.resultats_artelia[artelia][f"{kw} → all"] = val_format
                             break
                 else:
                     if kw not in self.keywords_valides:
@@ -327,16 +367,16 @@ class RowsExtract(BaseExtract):
 
         valeurs.columns = noms_echantillons
 
-        index_raw = df_raw.iloc[row_param:, col_param].tolist()
+        index_raw = df_raw.iloc[row_param :, col_param].tolist()
 
         if len(index_raw) > valeurs.shape[0]:
             print("📏 [DEBUG] Troncature des noms de paramètres")
             index_raw = index_raw[:valeurs.shape[0]]
-
         elif len(index_raw) < valeurs.shape[0]:
             print("📏 [DEBUG] Complétion des noms de paramètres")
             index_raw += [""] * (valeurs.shape[0] - len(index_raw))
 
+        valeurs = valeurs.iloc[:len(index_raw)].copy()
         valeurs.index = index_raw
 
         self.df = valeurs.T.reset_index(drop=True)
@@ -359,19 +399,16 @@ class RowsExtract(BaseExtract):
         matched_columns = self.get_matching_columns(self.df.columns)
         self.matched_columns = matched_columns
 
-        # =========== DEBUG ==================
-        # afficher_colonnes_detectees(matched_columns, titre="🔍 Colonnes correspondant aux mots-clés")
-        # ====================================
-
         for i, row in self.df.iterrows():
             artelia = str(row["Nom échantillon"]).strip()
 
             for kw, col_infos in matched_columns.items():
                 if f"{kw} → all" in self.keywords_valides:
-                    for col_idx, nom_col in col_infos:
+                    for col_idx, nom_col in matched_columns[kw]:
                         val = extraire_valeur(self.df.iloc[i, col_idx])
-                        if val is not None:
-                            self.resultats_artelia[artelia][f"{kw} → all"] = formater_valeur(val)
+                        if val is not None and not str(val).strip().startswith("<"):
+                            val_format = formater_valeur(val)
+                            self.resultats_artelia[artelia][f"{kw} → all"] = val_format
                             break
                 else:
                     if kw not in self.keywords_valides:

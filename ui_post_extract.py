@@ -45,7 +45,12 @@ def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, resulta
                 zone_gauche.delete(0, tk.END)
 
                 for label in libelles_formates:
-                    if label in mots:
+                    ref = affichage_mapping.get(label, label)
+                    if isinstance(ref, tuple):
+                        ref_str = f"{ref[0]} → {ref[1]}"
+                    else:
+                        ref_str = ref
+                    if ref_str in mots:
                         zone_droite.insert(tk.END, label)
                     else:
                         zone_gauche.insert(tk.END, label)
@@ -100,9 +105,19 @@ def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, resulta
                 if extraction_type.lower() == "lignes":
                     r_nom, c_nom = cell_to_index(config_extraction["cell_nom_echantillon"])
                     r_data, c_data = cell_to_index(config_extraction["cell_data_start"])
-                    r_limite, _ = cell_to_index(config_extraction["cell_limite"]) if config_extraction.get(
-                        "cell_limite") else (None, None)
-                    optionnels = {k: cell_to_index(v) for k, v in config_extraction.get("optionnels", {}).items()}
+                    r_limite, _ = (None, None)
+                    cell_limite = config_extraction.get("cell_limite")
+                    if cell_limite and str(cell_limite).strip().lower() != "none":
+                        r_limite, _ = cell_to_index(cell_limite)
+
+                    optionnels_brut = config_extraction.get("optionnels", {})
+                    optionnels = {}
+                    for k, v in optionnels_brut.items():
+                        if isinstance(v, str) and v.strip() and v.strip().lower() != "none":
+                            try:
+                                optionnels[k] = cell_to_index(v)
+                            except Exception as e:
+                                print(f"⚠️ Optionnel ignoré ({k}): valeur invalide '{v}' ({e})")
 
                     config = {
                         "row_noms": r_nom,
@@ -116,9 +131,19 @@ def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, resulta
                     r_param, c_param = cell_to_index(config_extraction["cell_parametres"])
                     r_nom, c_nom = cell_to_index(config_extraction["cell_nom_echantillon"])
                     r_data, c_data = cell_to_index(config_extraction["cell_data_start"])
-                    r_limite, c_limite = cell_to_index(config_extraction["cell_limite"]) if config_extraction.get(
-                        "cell_limite") else (None, None)
-                    optionnels = {k: cell_to_index(v) for k, v in config_extraction.get("optionnels", {}).items()}
+                    r_limite, c_limite = (None, None)
+                    cell_limite = config_extraction.get("cell_limite")
+                    if cell_limite and str(cell_limite).strip().lower() != "none":
+                        r_limite, c_limite = cell_to_index(cell_limite)
+
+                    optionnels_brut = config_extraction.get("optionnels", {})
+                    optionnels = {}
+                    for k, v in optionnels_brut.items():
+                        if isinstance(v, str) and v.strip() and v.strip().lower() != "none":
+                            try:
+                                optionnels[k] = cell_to_index(v)
+                            except Exception as e:
+                                print(f"⚠️ Optionnel ignoré ({k}): valeur invalide '{v}' ({e})")
 
                     config = {
                         "param_row": r_param,
@@ -178,7 +203,14 @@ def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, resulta
                 return
 
             selection = listbox.curselection()
-            mots_selectionnes = [reverse_mapping[listbox.get(i)] for i in selection]
+            mots_selectionnes = []
+            for i in selection:
+                item = listbox.get(i)
+                val = reverse_mapping.get(item)
+                if isinstance(val, tuple):
+                    mots_selectionnes.append(f"{val[0]} → {val[1]}")
+                else:
+                    mots_selectionnes.append(val)
 
             if not mots_selectionnes:
                 messagebox.showwarning("Aucun mot-clé", "Sélectionnez au moins un mot-clé.")
@@ -202,23 +234,34 @@ def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, resulta
         listbox = tk.Listbox(fenetre, selectmode=tk.MULTIPLE, width=40, height=10)
         listbox.pack(padx=10, pady=5)
 
-        # Source : uniquement matched_columns
-        keywords_source = list(matched_columns.keys())
-
-        # Construction du label lisible et du reverse mapping
         reverse_mapping = {}
-        for kw in sorted(keywords_source):
-            label = kw
-            if kw in mapping_all:
-                label += " → all"
-            reverse_mapping[label] = kw
-            listbox.insert(tk.END, label)
+        libelles_groupables = []
 
-        # Sélectionner ceux déjà enregistrés si on modifie
+        # Basic copy from keyword matching generation
+        for kw, correspondances in matched_columns.items():
+            if not correspondances:
+                label = kw
+                libelles_groupables.append(label)
+                reverse_mapping[label] = kw
+            else:
+                label_all = f"{kw} → all"
+                libelles_groupables.append(label_all)
+                reverse_mapping[label_all] = (kw, "all")
+                for _, vrai_nom in correspondances:
+                    label = f"{kw} → {vrai_nom}"
+                    libelles_groupables.append(label)
+                    reverse_mapping[label] = (kw, vrai_nom)
+
+        # Listbox from copy
+        for label in libelles_groupables:
+            listbox.insert(tk.END, label)
+        # Memory for reopening
         if nom and nom in groupes:
             mots_du_groupe = groupes[nom]
             for i, label in enumerate(listbox.get(0, tk.END)):
-                if reverse_mapping.get(label) in mots_du_groupe:
+                val = reverse_mapping.get(label)
+                val_str = f"{val[0]} → {val[1]}" if isinstance(val, tuple) else str(val)
+                if val_str in mots_du_groupe:
                     listbox.selection_set(i)
 
         tk.Button(fenetre, text="Valider", command=valider).pack(pady=10)
