@@ -1,22 +1,38 @@
+# ==========================
+# EXCLUDE GENERATED FILES
+# ==========================
+
+*.toc linguist-generated
+*.log linguist-generated
+*.aux linguist-generated
+*.out linguist-generated
+*.bbl linguist-generated
+*.blg linguist-generated
+*.synctex.gz linguist-generated
+*.fdb_latexmk linguist-generated
+*.fls linguist-generated
+*.dvi linguist-generated
+*.pdf linguist-generated
+
+# ==========================
+# IGNORE LaTeX-LIKE SOURCE FILES (vendored, not relevant to main code)
+# ==========================
+
 *.tex linguist-vendored
 *.sty linguist-vendored
 *.cls linguist-vendored
 *.bib linguist-vendored
-*.log linguist-generated
-*.aux linguist-generated
-*.toc linguist-generated
-*.out linguist-generated
-*.lof linguist-generated
-*.lot linguist-generated
-*.fls linguist-generated
-*.fdb_latexmk linguist-generated
-*.synctex.gz linguist-generated
-*.bbl linguist-generated
-*.blg linguist-generated
-*.brf linguist-generated
-*.nav linguist-generated
-*.snm linguist-generated
-*.vrb linguist-generated
-*.xdv linguist-generated
-*.pdf linguist-generated
-*.dvi linguist-generated
+
+# ==========================
+# OPTIONAL: VENDORED FRONTEND FILES IF YOU USE THEM
+# ==========================
+
+*.html linguist-vendored
+*.css linguist-vendored
+*.js linguist-vendored
+
+# ==========================
+# MAIN LANGUAGE
+# ==========================
+
+*.py linguist-language=Python
