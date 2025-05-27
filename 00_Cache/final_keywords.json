@@ -1,23 +1,27 @@
 {
   "keywords_valides": [
-    "Code Artelia → all",
+    "Code Artelia",
     "benzene → all",
     "hap → all",
-    "BTEX",
-    "C10-C40 (4)"
+    "hap → (27, Somme des HAP - (mg/kg M.S.))",
+    "hap → (44, Somme 15 HAP + Naphtalène (volatil) - (mg/kg M.S.))",
+    "hap → (146, Somme 15 HAP + Naphtalène (volatil) - (mg/kg M.S.))"
   ],
   "groupes_personnalises": {
     "BTEX": [
-      "toluene → all",
       "ethylbenzene → all",
+      "m+p-xylene → all",
       "o-xylene → all",
-      "m+p-xylene → all"
-    ],
-    "C10-C40 (4)": [
-      "nc10 - nc16 → all",
-      "nc16 - nc22 → all",
-      "nc22 - nc30 → all",
-      "nc30 - nc40 → all"
+      "toluene → all"
     ]
-  }
+  },
+  "ordre_selection": [
+    "Code Artelia",
+    "benzene → all",
+    "hap → all",
+    "hap → (27, Somme des HAP - (mg/kg M.S.))",
+    "hap → (44, Somme 15 HAP + Naphtalène (volatil) - (mg/kg M.S.))",
+    "hap → (146, Somme 15 HAP + Naphtalène (volatil) - (mg/kg M.S.))",
+    "BTEX"
+  ]
 }

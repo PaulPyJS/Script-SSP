@@ -22,26 +22,6 @@ def normalize(text):
 def clean_tokens(text):
     return re.findall(r'[a-z0-9]+', normalize(text))
 
-def convert_config_to_indices(config_dict):
-    r_nom, c_nom = cell_to_index(config_dict["cell_nom_echantillon"])
-    r_param, c_param = cell_to_index(config_dict["cell_parametres"])
-    r_data, c_data = cell_to_index(config_dict["cell_data_start"])
-
-    optionnels = {
-        k: cell_to_index(v)
-        for k, v in config_dict.get("optionnels", {}).items()
-        if isinstance(v, str) and v.strip().lower() != "none"
-    }
-
-    return {
-        "nom_row": r_nom,
-        "nom_col": c_nom,
-        "param_row": r_param,
-        "param_col": c_param,
-        "data_start_row": r_data,
-        "data_start_col": c_data,
-        "optionnels": optionnels
-    }
 
 def col_idx_to_excel_letter(idx):
     letter = ''
@@ -82,15 +62,18 @@ def sauvegarder_groupes_parametres(groupes, fichier="sum.json"):
     sauvegarder_json(fichier, groupes)
 
 
-def values_lq_or_none(val):
-    val_str = str(val).strip().lower()
-    # if nan then empty cell - meaning no analysis donee
+def formater_valeur(val):
     if pd.isna(val):
-        return ""
+        return "<LQ"
+
+    val_str = str(val).strip().lower()
+
     if val_str.startswith("<"):
         return f"<LQ ({val_str})"
-    if val_str in {"n.d.", "n.d", "nd", "-", "n.d,", "n.d.."}:
+
+    if val_str in {"n.d.", "n.d", "nd", "-", "n.d,", "n.d..", ""}:
         return "<LQ"
+
     return val_str
 
 def is_label_all(label_info):

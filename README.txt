@@ -11,6 +11,7 @@ This desktop application allows you to extract, select, and export specific geoc
 - Choose what to export via interface and create groups to add values
 	- Save your export_type in .json to reuse it 
 - Export results as a clean `.xlsx` file
+	- If values nd, -, <LQ, then result will be <LQ. if no data at all then empty cell
 
 
 # ======================================================================================================================================================

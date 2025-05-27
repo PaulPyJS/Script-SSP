@@ -4,9 +4,6 @@ import json
 import os
 import sys
 
-from extract_utils import convert_config_to_indices, values_lq_or_none
-from analysis_extract import RowsExtract, ColumnsExtract
-
 if getattr(sys, 'frozen', False):
     BASE_DIR = os.path.dirname(sys.executable)
 else:
@@ -31,12 +28,9 @@ def load_last_config():
     return ""
 
 
-def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, resultats_artelia, sheet_name, df, mapping_all, config_extraction=None, input_zone_gauche=None):
+def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, resultats_artelia, sheet_name, df, mapping_all, config_extraction=None):
     affichage_mapping = {}
-    libelles_formates = input_zone_gauche.copy()
-    matched_original = matched_columns.copy()
     mapping_all = getattr(resultats_artelia, 'mapping_all', {})
-    config_kw = []
 
     for kw, colonnes in matched_columns.items():
         for col in colonnes:
@@ -44,47 +38,33 @@ def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, resulta
             affichage_mapping[label_affiche] = kw
 
     def charger_config():
-        nonlocal config_kw
         path = filedialog.askopenfilename(filetypes=[("JSON files", "*.json")])
         if not path:
             return
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                # keyword_valides part
                 mots = data.get("keywords_valides", [])
-                config_kw.clear()
-                config_kw.extend(data.get("keywords_valides", []))
-                # groupes_personalises part
                 groupes.clear()
                 groupes.update(data.get("groupes_personnalises", {}))
 
                 config_path.set(path)
                 save_last_config(path)
 
-
-
-                # Affichage des zones
                 zone_droite.delete(0, tk.END)
                 zone_gauche.delete(0, tk.END)
 
-                if "Code Artelia" not in zone_droite.get(0, tk.END):
-                    zone_droite.insert(0, "Code Artelia")
-
-                # Affiche tout à gauche par défaut
                 for label in libelles_formates:
                     ref = affichage_mapping.get(label, label)
                     if isinstance(ref, tuple):
                         ref_str = f"{ref[0]} → {ref[1]}"
                     else:
                         ref_str = ref
-
-                    if ref_str in config_kw:
+                    if ref_str in mots:
                         zone_droite.insert(tk.END, label)
                     else:
                         zone_gauche.insert(tk.END, label)
 
-                # Ajout des groupes
                 for nom_groupe in groupes:
                     if nom_groupe not in zone_droite.get(0, tk.END):
                         zone_droite.insert(tk.END, nom_groupe)
@@ -103,98 +83,130 @@ def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, resulta
     def retirer_mots():
         for i in zone_droite.curselection()[::-1]:
             kw = zone_droite.get(i)
-            if kw == "Code Artelia":
-                continue
             zone_gauche.insert(tk.END, kw)
             zone_droite.delete(i)
 
     def generer_config():
         mots = list(zone_droite.get(0, tk.END))
         if not mots:
-            messagebox.showwarning("Aucun mot-clé", "Veuillez sélectionner au moins un paramètre.")
+            messagebox.showwarning("Aucun mot-clé", "Veuillez sélectionner au moins un mot-clé.")
             return
-
-        output_dict = {
-            "keywords_valides": [],
-            "groupes_personnalises": groupes
-        }
-
-        # Exclure les groupes déjà connus pour ne garder que les vrais paramètres
-        for mot in mots:
-            if mot not in groupes and mot != "Code Artelia":
-                output_dict["keywords_valides"].append(mot)
-
         path = filedialog.asksaveasfilename(defaultextension=".json", initialfile="config_extract.json")
         if not path:
             return
-
         with open(path, "w", encoding="utf-8") as f:
-            json.dump(output_dict, f, indent=2, ensure_ascii=False)
-
+            json.dump({
+                "keywords_valides": mots,
+                "groupes_personnalises": groupes
+            }, f, indent=2, ensure_ascii=False)
         config_path.set(path)
         save_last_config(path)
         messagebox.showinfo("Succès", f"Configuration sauvegardée dans :\n{path}")
 
     def extraire_en_excel():
-        selection = list(zone_droite.get(0, tk.END))
-        print("📦 Zone droite sélection :", list(zone_droite.get(0, tk.END)))
-        print("📦 Groupes actuels :", groupes)
-        if not selection:
-            messagebox.showwarning("Aucun paramètre", "Veuillez sélectionner au moins un paramètre à exporter.")
-            return
+        labels_selectionnes = list(zone_droite.get(0, tk.END))
+        mots = []
 
-        output_zone_droite = {
-            "keywords_valides": [item for item in selection if item not in groupes],
-            "groupes_personnalises": groupes,
-            "ordre_selection": selection
-        }
-
-        print("EXTRAIRE EN EXCEL - START : Groupes =", groupes)
-
-        # Sauvegarde JSON temporaire
-        with open(temp_json, "w", encoding="utf-8") as f:
-            json.dump(output_zone_droite, f, indent=2, ensure_ascii=False)
-
-        # Suite : config + lancement extraction
         config = None
-        try:
-            print("📋 Fichier Excel =", excel_file)
-            print("📋 Sheet name =", sheet_name)
-            print("📋 Type extraction =", extraction_type)
-            print("📋 Config extraction brut =", config_extraction)
-
-            if extraction_type.lower() in ["colonnes", "lignes"]:
-                config = convert_config_to_indices(config_extraction)
-
-            print("🧪 DEBUG config_extraction brut:", config_extraction)
-            print("🧪 DEBUG config transformé:", config)
-
-            # Lancement de l'extraction
+        if config_extraction:
             try:
-                if extraction_type.lower() == "colonnes":
-                    print("⚙️ Création ColumnsExtract")
-                    extractor = ColumnsExtract(excel_file, temp_json, sheet_name, col_config=config)
-                else:
-                    print("⚙️ Création RowsExtract")
-                    extractor = RowsExtract(excel_file, temp_json, sheet_name, row_config=config)
+                from extract_utils import cell_to_index
 
-                print("✅ Extractor created:", extractor)
+                if extraction_type.lower() == "lignes":
+
+                    r_nom, c_nom = cell_to_index(config_extraction["cell_nom_echantillon"])
+                    r_data, c_data = cell_to_index(config_extraction["cell_data_start"])
+                    r_param, c_param = cell_to_index(config_extraction["cell_parametres"])
+
+                    r_limite, _ = (None, None)
+                    cell_limite = config_extraction.get("cell_limite")
+                    if cell_limite and str(cell_limite).strip().lower() != "none":
+                        r_limite, _ = cell_to_index(cell_limite)
+
+                    optionnels_brut = config_extraction.get("optionnels", {})
+                    optionnels = {}
+                    for k, v in optionnels_brut.items():
+                        if isinstance(v, str) and v.strip() and v.strip().lower() != "none":
+                            try:
+                                optionnels[k] = cell_to_index(v)
+                            except Exception as e:
+                                print(f"⚠️ Optionnel ignoré ({k}): valeur invalide '{v}' ({e})")
+
+                    config = {
+                        "nom_row": r_nom,
+                        "nom_col": c_nom,
+                        "param_row": r_param,
+                        "param_col": c_param,
+                        "row_limites": r_limite,
+                        "data_start_row": r_data,
+                        "data_start_col": c_data,
+                        "optionnels": optionnels,
+                    }
+                elif extraction_type.lower() == "colonnes":
+                    r_param, c_param = cell_to_index(config_extraction["cell_parametres"])
+                    r_nom, c_nom = cell_to_index(config_extraction["cell_nom_echantillon"])
+                    r_data, c_data = cell_to_index(config_extraction["cell_data_start"])
+                    r_limite, c_limite = (None, None)
+                    cell_limite = config_extraction.get("cell_limite")
+                    if cell_limite and str(cell_limite).strip().lower() != "none":
+                        r_limite, c_limite = cell_to_index(cell_limite)
+
+                    optionnels_brut = config_extraction.get("optionnels", {})
+                    optionnels = {}
+                    for k, v in optionnels_brut.items():
+                        if isinstance(v, str) and v.strip() and v.strip().lower() != "none":
+                            try:
+                                optionnels[k] = cell_to_index(v)
+                            except Exception as e:
+                                print(f"⚠️ Optionnel ignoré ({k}): valeur invalide '{v}' ({e})")
+
+                    config = {
+                        "param_row": r_param,
+                        "param_col": c_param,
+                        "nom_row": r_nom,
+                        "nom_col": c_nom,
+                        "data_start_row": r_data,
+                        "data_start_col": c_data,
+                        "limite_row": r_limite,
+                        "limite_col": c_limite,
+                        "optionnels": optionnels
+                    }
             except Exception as e:
-                print("❌ Erreur lors de l'instanciation de l'extracteur :", e)
-                messagebox.showerror("Erreur instanciation extracteur", f"{e}")
+                messagebox.showerror("Erreur config_extraction", f"Erreur lors de la conversion de la config :\n{e}")
                 return
 
+        for label in labels_selectionnes:
+            kw = affichage_mapping.get(label, label)
+            if isinstance(kw, tuple):
+                mots.append(f"{kw[0]} → {kw[1]}")
+            else:
+                mots.append(kw)
 
-            extractor.load_keywords_ui2()
-            print("✔️ load_keywords terminé")
-            extractor.load_data()
-            print("✔️ load_data terminé")
-            extractor.extract()
-            print("✔️ extract terminé")
-            extractor.export()
+        if not mots:
+            messagebox.showwarning("Aucun mot-clé", "Veuillez sélectionner au moins un mot-clé.")
+            return
 
-        except Exception as e:
-            messagebox.showerror("Erreur config_extraction", f"Erreur :\n{e}")
+
+        with open(temp_json, "w", encoding="utf-8") as f:
+            json.dump({
+                "keywords_valides": mots,
+                "groupes_personnalises": groupes
+            }, f, indent=2, ensure_ascii=False)
+
+        if extraction_type.lower() == "colonnes":
+            from analysis_extract import ColumnsExtract
+            extractor = ColumnsExtract(excel_file, temp_json, sheet_name, col_config=config)
+        elif extraction_type.lower() == "lignes":
+            from analysis_extract import RowsExtract
+            extractor = RowsExtract(excel_file, temp_json, sheet_name, row_config=config)
+        else:
+            messagebox.showinfo("Non pris en charge", f"Type '{extraction_type}' non encore implémenté.")
+            return
+
+        extractor.load_keywords()
+        extractor.load_data()
+        extractor.extract()
+        extractor.export()
 
     # GROUPING DATA SUM FUNCTION
     #
@@ -206,11 +218,14 @@ def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, resulta
                 return
 
             selection = listbox.curselection()
-            mots_selectionnes = [listbox.get(i) for i in selection]
-
+            mots_selectionnes = []
             for i in selection:
                 item = listbox.get(i)
-                mots_selectionnes.append(item)
+                val = reverse_mapping.get(item)
+                if isinstance(val, tuple):
+                    mots_selectionnes.append(f"{val[0]} → {val[1]}")
+                else:
+                    mots_selectionnes.append(val)
 
             if not mots_selectionnes:
                 messagebox.showwarning("Aucun mot-clé", "Sélectionnez au moins un mot-clé.")
@@ -219,11 +234,6 @@ def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, resulta
             groupes[nom_groupe] = mots_selectionnes
             fenetre.destroy()
             afficher_groupes()
-
-
-
-
-
 
         fenetre = tk.Toplevel()
         fenetre.title("Créer / Modifier un groupe")
@@ -240,20 +250,24 @@ def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, resulta
         reverse_mapping = {}
         libelles_groupables = []
 
-        # Crée les libellés groupables à partir de input_zone_gauche
-        for label in input_zone_gauche:
-            if "→" in label:
-                kw, col = map(str.strip, label.split("→", 1))
+        # Basic copy from keyword matching generation
+        for kw, correspondances in matched_columns.items():
+            if not correspondances:
+                label = kw
                 libelles_groupables.append(label)
-                reverse_mapping[label] = (kw, col)
+                reverse_mapping[label] = kw
             else:
-                libelles_groupables.append(label)
-                reverse_mapping[label] = label
+                label_all = f"{kw} → all"
+                libelles_groupables.append(label_all)
+                reverse_mapping[label_all] = (kw, "all")
+                for _, vrai_nom in correspondances:
+                    label = f"{kw} → {vrai_nom}"
+                    libelles_groupables.append(label)
+                    reverse_mapping[label] = (kw, vrai_nom)
 
-        # Ajout des libellés à la listbox
+        # Listbox from copy
         for label in libelles_groupables:
             listbox.insert(tk.END, label)
-
         # Memory for reopening
         if nom and nom in groupes:
             mots_du_groupe = groupes[nom]
@@ -370,62 +384,38 @@ def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, resulta
     text_resultat.pack(pady=5, padx=10)
 
 
-    def randomize_values():
-        import random
-        # Same extract as extract_to_excel : not the best practice but ok with this kind of data
+
+
+
+    def afficher_ligne_random():
         try:
-            if extraction_type.lower() in ["colonnes", "lignes"]:
-                config = convert_config_to_indices(config_extraction)
-                correspondances_input = {
-                    f"{kw} → ({idx}, {nom})": [(idx, nom)]
-                    for kw, correspondances in matched_original.items()
-                    for idx, nom in correspondances
-                }
+            import random
 
-                if extraction_type.lower() == "colonnes":
-                    extractor = ColumnsExtract(excel_file, temp_json, sheet_name, col_config=config)
-                    axis = "columns"
-                    extractor.load_data()
-                    noms_ref = list(extractor.df.iloc[config["param_row"]])
-                    idx_random = random.randint(config["nom_row"] + 1, extractor.df.shape[0] - 1)
+            if not resultats_artelia:
+                raise ValueError("Aucune donnée disponible.")
 
-                else:
-                    extractor = RowsExtract(excel_file, temp_json, sheet_name, row_config=config)
-                    axis = "rows"
-                    extractor.load_data()
-                    noms_ref = list(extractor.df.iloc[config["param_row"]:, config["param_col"]])
-                    idx_random = random.randint(config["data_start_col"] + 1, extractor.df.shape[1] - 1)
+            code = random.choice(list(resultats_artelia.keys()))
+            mesures = resultats_artelia[code]
 
-                kw = random.choice(list(correspondances_input.keys()))
-                val = values_lq_or_none(extractor.extract_values(
-                    item=kw,
-                    df=extractor.df,
-                    idx=idx_random,
-                    noms_reference=noms_ref,
-                    correspondances_input=correspondances_input,
-                    axis=axis
-                ))
-                if axis == "columns":
-                    code = extractor.df.iat[idx_random, config["nom_col"]]
-                else:
-                    code = extractor.df.iat[config["nom_row"], idx_random]
-
-                texte = f"🔍 Code : {code} | {kw.split('→', 1)[-1].strip()} | {val}"
-
+            texte = f"Code Artelia: {code}"
+            if not mesures:
+                texte += " | Pas d'analyse détectée"
             else:
-                texte = "⚠️ Type d'extraction non reconnu."
+                comp, val = random.choice(list(mesures.items()))
+                texte += f" | {comp} = {val}"
+
+            text_resultat.configure(state="normal")
+            text_resultat.delete("1.0", tk.END)
+            text_resultat.insert(tk.END, texte)
+            text_resultat.configure(state="disabled")
+
         except Exception as e:
-            texte = f"❌ Erreur : {e}"
+            text_resultat.configure(state="normal")
+            text_resultat.delete("1.0", tk.END)
+            text_resultat.insert(tk.END, f"⚠️ Erreur : {e}")
+            text_resultat.configure(state="disabled")
 
-        text_resultat.configure(state="normal")
-        text_resultat.delete("1.0", tk.END)
-        text_resultat.insert(tk.END, texte)
-        text_resultat.configure(state="disabled")
-
-    tk.Button(frame_verification, text="Randomize", command=randomize_values).pack(pady=5)
-
-
-
+    tk.Button(frame_verification, text="Randomize", command=afficher_ligne_random).pack(pady=5)
 
 
     # GROUP AREA TO GATHER PARAMETERS TO PREPARE SUM
@@ -448,34 +438,45 @@ def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, resulta
 
 
     # == INIT ==
-    config_kw = []
-    affichage_mapping.clear()
+    affichage_mapping = {}
+    libelles_formates = []
 
-    for label in input_zone_gauche:
-        if label not in libelles_formates:
-            if "→" not in label:
-                affichage_mapping[label] = label
-            elif "→ all" in label:
-                kw = label.split("→")[0].strip()
-                affichage_mapping[label] = (kw, "all")
+    for kw, correspondances in matched_columns.items():
+        if not correspondances:
+            label = kw
             libelles_formates.append(label)
+            affichage_mapping[label] = kw
+        else:
+            label_all = f"{kw} → all"
+            libelles_formates.append(label_all)
+            affichage_mapping[label_all] = (kw, "all")
+
+            for idx, vrai_nom in correspondances:
+                label = f"{kw} → {vrai_nom}"
+                libelles_formates.append(label)
+                affichage_mapping[label] = (kw, vrai_nom)
 
 
-    # Affichage des zones
+    config_kw = []
+    last_used = load_last_config()
+    if last_used and os.path.exists(last_used):
+        try:
+            with open(last_used, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                config_path.set(last_used)
+                config_kw = data.get("keywords_valides", [])
+                groupes.update(data.get("groupes_personnalises", {}))
+        except:
+            config_kw = []
+
     zone_droite.delete(0, tk.END)
     zone_gauche.delete(0, tk.END)
-
-    if "Code Artelia" not in zone_droite.get(0, tk.END):
-        zone_droite.insert(tk.END, "Code Artelia")
 
     for label in libelles_formates:
         ref = affichage_mapping.get(label, label)
         if isinstance(ref, tuple):
-            ref_str = f"{ref[0]} → {ref[1]}"
-        else:
-            ref_str = ref
-
-        if ref_str in config_kw:
+            ref = f"{ref[0]} → {ref[1]}"
+        if ref in config_kw:
             zone_droite.insert(tk.END, label)
         else:
             zone_gauche.insert(tk.END, label)

@@ -4,12 +4,11 @@ import json
 import sys
 import os
 import warnings
-import pandas as pd
-from analysis_extract import BaseExtract
-from extract_utils import convert_config_to_indices
-from ui_post_extract import ouvrir_ui_post_extract
-
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
+
+from analysis_extract import ColumnsExtract, RowsExtract
+from ui_post_extract import ouvrir_ui_post_extract
+from extract_utils import cell_to_index
 
 if getattr(sys, 'frozen', False):
     BASE_DIR = os.path.dirname(sys.executable)
@@ -193,8 +192,8 @@ class ExtractApp:
     # NEW v2.2 = STEP ASKING USER FOR CELLS DATA - First cell with value, not headers
     #
     def ouvrir_popup_type(self):
-        extraction_type = self.type_var.get().lower()
-        if extraction_type == "lignes":
+        extraction_type = self.type_var.get()
+        if extraction_type == "Lignes":
             def continuer_extraction(row_config):
                 self.row_config = row_config
                 with open(FICHIER_LAST_TYPE_CONFIG, "w", encoding="utf-8") as f:
@@ -202,7 +201,7 @@ class ExtractApp:
 
             self.create_type_extract_popup(self.master, continuer_extraction, config_init=self.row_config)
 
-        elif extraction_type == "colonnes":
+        elif extraction_type == "Colonnes":
             def continuer_extraction(col_config):
                 self.col_config = col_config
                 with open(FICHIER_LAST_TYPE_CONFIG, "w", encoding="utf-8") as f:
@@ -212,6 +211,8 @@ class ExtractApp:
 
         else:
             messagebox.showinfo("Info", f"Aucune configuration requise pour le type : {extraction_type}")
+
+
 
     def create_type_extract_popup(self, parent, callback, config_init=None):
         popup = tk.Toplevel(parent)
@@ -286,15 +287,16 @@ class ExtractApp:
             tk.Label(frame_optional, text=f"{nom} : {cell}").pack(anchor="w")
 
         def valider():
-            # Input data from user into config then callback continuer_extraction and return self.row/col_config
-            # For every v in k = list creation
             config = {k: v.get().strip() for k, v in entries.items()}
             config["optionnels"] = optional_fields
+            if config.get("cell_limite", "") == "":
+                config["cell_limite"] = None
             popup.destroy()
             callback(config)
 
         tk.Button(frame_main, text="Valider", command=valider, bg="green", fg="white") \
             .grid(row=8, column=0, columnspan=2, pady=10)
+
 
     def get_current_config(self):
         extraction_type = self.type_var.get().lower()
@@ -342,8 +344,6 @@ class ExtractApp:
 
 
 
-
-
     def lancer_extraction(self):
         if not self.excel_file:
             messagebox.showwarning("Fichier Excel manquant", "Veuillez sélectionner un fichier Excel.")
@@ -368,46 +368,67 @@ class ExtractApp:
                                    "Veuillez d'abord configurer l'extraction via le bouton 'Configurer'.")
             return
 
+        with open(FICHIER_TEMP_KEYWORDS, "w", encoding="utf-8") as f:
+            json.dump({
+                "keywords_valides": self.keywords,
+                "groupes_personnalises": {}
+            }, f, indent=2, ensure_ascii=False)
 
         try:
-            config = convert_config_to_indices(config_extraction)
-            df = pd.read_excel(self.excel_file, sheet_name=sheet_name, header=None)
+            cell_param = config_extraction.get("cell_parametres", "A1")
+            cell_nom = config_extraction.get("cell_nom_echantillon", "A1")
+            cell_data_start = config_extraction.get("cell_data_start", "A1")
+
+            r_param, c_param = cell_to_index(cell_param)
+            r_nom, c_nom = cell_to_index(cell_nom)
+            r_data, c_data = cell_to_index(cell_data_start)
+
+            optionnels_brut = config_extraction.get("optionnels", {})
+            optionnels = {}
+            for k, v in optionnels_brut.items():
+                if isinstance(v, str) and v.strip() and v.strip().lower() != "none":
+                    try:
+                        optionnels[k] = cell_to_index(v)
+                    except Exception as e:
+                        print(f"⚠️ Optionnel ignoré ({k}): valeur invalide '{v}' ({e})")
+
+            config = {
+                "param_row": r_param,
+                "param_col": c_param,
+                "nom_row": r_nom,
+                "nom_col": c_nom,
+                "data_start_row": r_data,
+                "data_start_col": c_data,
+                "optionnels": optionnels
+            }
 
             if extraction_type.lower() == "colonnes":
-                labels = df.iloc[config["param_row"]]
+                extractor = ColumnsExtract(self.excel_file, FICHIER_TEMP_KEYWORDS, sheet_name, col_config=config)
             elif extraction_type.lower() == "lignes":
-                labels = df.iloc[:, config["param_col"]]
+                extractor = RowsExtract(self.excel_file, FICHIER_TEMP_KEYWORDS, sheet_name, row_config=config)
             else:
-                raise ValueError("Type d'extraction inconnu")
+                messagebox.showerror("Erreur", f"Type d'extraction '{extraction_type}' non supporté.")
+                return
 
-            matched, multiple_matches = BaseExtract.get_matching_columns(labels, self.keywords)
+            extractor.load_keywords()
+            extractor.load_data()
+            extractor.extract()
 
-            input_zone_gauche = []
+            print("Résultat extrait:", extractor.resultats_artelia)
 
-            # 1. Ajouter les → all
-            for kw in sorted(multiple_matches):
-                input_zone_gauche.append(f"{kw} → all")
-
-            # 2. Ajouter les correspondances précises AVEC index
-            for kw, correspondances in matched.items():
-                for idx, vrai_nom in correspondances:
-                    input_zone_gauche.append(f"{kw} → ({idx}, {vrai_nom})")
-
-            # 3. Ajouter les keywords sans correspondance
-            for kw in matched:
-                if not matched[kw]:
-                    input_zone_gauche.append(kw)
+            if extractor.df is None or extractor.df.empty:
+                messagebox.showwarning("Extraction vide", "Aucune donnée extraite depuis le fichier.")
+                return
 
             ouvrir_ui_post_extract(
-                matched_columns=matched,
-                extraction_type=extraction_type,
-                excel_file=self.excel_file,
-                resultats_artelia=None,
-                sheet_name=sheet_name,
-                df=None,
-                mapping_all={},  # pas encore défini à ce stade
-                config_extraction=config_extraction,
-                input_zone_gauche=input_zone_gauche
+                extractor.get_matched_columns(),
+                extraction_type,
+                self.excel_file,
+                extractor.resultats_artelia,
+                sheet_name,
+                extractor.df,
+                mapping_all=extractor.mapping_all,
+                config_extraction=config_extraction
             )
 
         except Exception as e:
