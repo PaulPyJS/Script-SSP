@@ -1,9 +1,21 @@
 import pandas as pd
 import os
 import json
-from extract_utils import clean_tokens, cell_to_index, values_lq_or_none
+from extract_utils import clean_tokens, values_lq_or_none
 
-
+# === Script : EXTRACT VALUE WITH KEYWORD IN AN EXCEL FORMAT - TABLEURS MULTIPLE PAR CLASSES ===
+# = v1.0 : Test import from Excel raw DF-Excel and keyword-based extract
+        # = v1.05 : Multiple keywords test
+    # = v1.2 : Normalizing text and splitting data into keywords based on value or sum
+    # = v1.3 : Extraction validated for general keyword with random pick
+    # = v1.4 : Adapting the script to allow HAP to be separated from Naphtalene/HAP
+    # = v1.5 : DEBUG
+    # = v1.6 : Adding SUM calculation based on JSON file to allow local memory
+    # = v1.7 : Link to UI and using json for keywords
+# = v2.0 : PASSAGE FORMAT CLASSES DEPUIS EUROFINS_EXTRACT.PY
+    # = v2.1 : Adding class type AGROLAB
+    # = v2.2 : Using Rows and Columns from user to configure type of table - suppressing Agrolab/Eurofins type
+#
 class BaseExtract:
     def __init__(self, excel_path, json_config_path, sheet_name, config, input_zone_gauche = None):
         self.excel_path = excel_path
@@ -15,6 +27,7 @@ class BaseExtract:
         self.keywords_valides = []
         self.groupes_personnalises = {}
         self.input_zone_gauche = input_zone_gauche or []
+
 
 
     # INPUT:
@@ -30,6 +43,7 @@ class BaseExtract:
             raise ValueError("Expected a JSON list of keywords as input.")
 
         return [kw.strip() for kw in data if isinstance(kw, str)]
+
 
 
     # INPUT:
@@ -61,14 +75,18 @@ class BaseExtract:
 
         return matched, multiple_matches
 
+
+
     # INPUT:
-    #   item (str): The keyword to extract (can be "→ all", "→ (index, name)", or "→ column name").
-    #   df (pd.DataFrame): The full Excel DataFrame.
-    #   idx_row (int): The index of the current row (sample) to extract from.
-    #   noms_colonnes (list): List of column headers at the param_row.
-    #   correspondances_input (dict): Dict containing keyword → list of (col_idx, col_name) mappings.
+    #   item (str): Keyword or group item to extract from the DataFrame
+    #   df (pd.DataFrame): Excel data as a pandas DataFrame
+    #   noms_reference (list[str]): List of column names or row names used as reference to resolve indirect mappings
+    #   correspondances_input (dict[str, list[tuple[int, str]]])
+    #       Dictionary mapping keywords (with → or exact) to list of positions and names in the DataFrame
+    #   axis (str): "rows" or "columns", specifies the orientation of extraction
+    #   idx (int | None): Index of the row or column, depending on axis, to locate the value to extract
     # OUTPUT:
-    #   Value (str, float, or "") from the row
+    #   str: Extracted value from the DataFrame (processed with `values_lq_or_none`), or empty string if not found or invalid
     def extract_values(self, item, df, noms_reference, correspondances_input, axis, idx=None):
         # STEP 1 try : → all
         # On item : item is membre for groupes_personnalises or kw for keyword_valides
@@ -80,13 +98,14 @@ class BaseExtract:
             #                                                              or "toluene → all"
             #
             match_possibles = correspondances_input.get(item.strip(), [])
-            print(f"\n🔄 Traitement '{item}' avec colonnes possibles :", match_possibles)
+            print(f"\nTraitement '{item}' avec colonnes possibles :", match_possibles)
 
             valeurs_possibles = []
             # Using valeur_possible to take multiples ones but using the first [0]
             for idx_possibles, nom in match_possibles:
                 try:
                     if axis == "rows":
+                        idx_possibles = idx_possibles + self.config["param_row"]
                         val = df.iat[idx_possibles, idx_col]
                         if pd.notna(val) and str(val).strip() != "":
                             valeurs_possibles.append(val)
@@ -95,7 +114,7 @@ class BaseExtract:
                         if pd.notna(val) and str(val).strip() != "":
                             valeurs_possibles.append(val)
                 except Exception as e:
-                    print(f"❌ Erreur accès {axis} '{nom}' : {e}")
+                    print(f"Erreur accès {axis} '{nom}' : {e}")
                     continue
             # Using first value found
             return values_lq_or_none(valeurs_possibles[0]) if valeurs_possibles else ""
@@ -114,7 +133,7 @@ class BaseExtract:
                     val = df.iat[idx_ligne, idx_possible] if axis == "columns" else df.iat[idx_possible, idx_col]
                     return values_lq_or_none(val)
             except Exception as e:
-                print(f"❌ Erreur sur item '{item}' : {e}")
+                print(f"Erreur sur item '{item}' : {e}")
                 return ""
 
         # STEP 3 : No → in data = " " securize the ransomize
@@ -130,20 +149,28 @@ class BaseExtract:
                     val = df.iat[idx_ligne, idx_ref] if axis == "columns" else df.iat[idx_ref, idx_col]
                     return values_lq_or_none(val)
                 except Exception as e:
-                    print(f"❌ Erreur fallback simple sur '{item}' : {e}")
+                    print(f"Erreur fallback simple sur '{item}' : {e}")
                     return ""
             else:
-                print(f"⚠️ '{item}' sans → ignoré car correspondances multiples ou absentes : {correspondances}")
+                print(f"'{item}' sans → ignoré car correspondances multiples ou absentes : {correspondances}")
                 return ""
 
 
     def load_data(self):
         self.df = pd.read_excel(self.excel_path, sheet_name=self.sheet_name, header=None)
 
+
+
+    # INPUT:
+    #   None (uses self.json_config_path as input file path).
+    # OUTPUT:
+    #   self.keywords_valides (list[str]): List of selected keywords to extract.
+    #   self.groupes_personnalises (dict[str, list[str]]): Custom groups of keywords to sum, defined by user.
+    #   self.ordre_colonnes (list[str]): Ordered list of parameters (keywords and groups) selected by the user in UI2.
     def load_keywords_ui2(self):
         with open(self.json_config_path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        print("✔️ LOAD_KEYWORD_UI2 : Contenu JSON chargé :", data)
+        print("LOAD_KEYWORD_UI2 : Contenu JSON chargé :", data)
 
         self.keywords_valides = data.get("keywords_valides", [])
         self.groupes_personnalises = data.get("groupes_personnalises", {})
@@ -151,12 +178,25 @@ class BaseExtract:
             "ordre_selection",
             self.keywords_valides + list(self.groupes_personnalises.keys())
         )
-        print("✅ LOAD_KEYWORD_UI2 : Groupes chargés :", self.groupes_personnalises)
-        print("✅ LOAD_KEYWORD_UI2 : Ordre colonnes :", self.ordre_colonnes)
+        print("LOAD_KEYWORD_UI2 : Groupes chargés :", self.groupes_personnalises)
+        print("LOAD_KEYWORD_UI2 : Ordre colonnes :", self.ordre_colonnes)
 
-    def export(self, output_path="export_resultats.xlsx"):
+
+
+    # INPUT:
+    #   self.resultats (dict[str, dict[str, Any]]): Dictionary of extracted results, indexed by "Code Artelia".
+    #   self.excel_path (str): Path to the original Excel file, used to generate the output filename.
+    #   self.ordre_colonnes (list[str]): Ordered list of columns to include in the export (final user selection).
+    # OUTPUT:
+    #   output_path (str): Full path to the generated Excel file containing the exported results.
+    def export(self):
+        dossier = os.path.dirname(self.excel_path)
+        nom_base = os.path.splitext(os.path.basename(self.excel_path))[0]
+        horodatage = pd.Timestamp.today().strftime('%Y%m%d_%H%M')
+        output_path = os.path.join(dossier, f"{nom_base}_résumé_extraction_{horodatage}.xlsx")
+
         if not self.resultats:
-            print("⚠️ Aucun résultat à exporter.")
+            print("LOAD UI2 : Aucun résultat à exporter.")
             return
 
         df_export = pd.DataFrame.from_dict(self.resultats, orient="index")
@@ -170,7 +210,7 @@ class BaseExtract:
 
         df_export.index.name = "Code Artelia"
         df_export.to_excel(output_path)
-        print(f"✅ Résultats exportés dans {output_path}")
+        return output_path
 
 
 
@@ -184,13 +224,15 @@ class ColumnsExtract(BaseExtract):
         self.col_config = col_config
 
     # INPUT:
-    #   self.df: Pandas DataFrame loaded from the Excel sheet
-    #   self.keywords_valides: List of selected keywords to extract
-    #   self.groupes_personnalises: Dict of custom groups (sums of keywords)
-    #   self.col_config: Dict specifying key row and column indices (e.g. nom_row, nom_col, param_row)
-    #   self.json_config_path: Path to JSON file containing input and output mapping zones
+    #   self.df (pd.DataFrame): Loaded Excel sheet containing the data to extract.
+    #   self.col_config (dict[str, int]): Configuration dictionary with indices for name column, name row, and parameter row:
+    #       - "nom_row": starting index for data rows.
+    #       - "nom_col": column index containing the sample code ("Code Artelia").
+    #       - "param_row": row index where parameter names (column headers) are located.
+    #   self.keywords_valides (list[str]): List of selected keywords (including "→ all" cases) to extract.
+    #   self.groupes_personnalises (dict[str, list[str]]): Custom groups of keywords to aggregate by summation.
     # OUTPUT:
-    #   self.resultats : values per sample, including group sums.
+    #   self.resultats (dict[str, dict[str, Any]]): Extracted values per sample code, with individual and grouped parameters.
     def extract(self):
         self.resultats = {}
         df = self.df
@@ -198,10 +240,7 @@ class ColumnsExtract(BaseExtract):
 
         nom_row = cfg["nom_row"]
         nom_col = cfg["nom_col"]
-        param_row = cfg["param_row"]
 
-        noms_colonnes = list(df.iloc[param_row])
-        print("EXTRACT : Groupes chargés dans l'extract:", self.groupes_personnalises)
 
         # STEP 0 : Using [output_zone_droite] to recalculate based on [input_zone_gauche]
         #           (just (matched) to avoid all)
@@ -222,9 +261,9 @@ class ColumnsExtract(BaseExtract):
         base_keywords = list(set(base_keywords))# Security
 
         # New detection
-        noms_colonnes = list(df.iloc[self.col_config["param_row"]])
+        noms_colonnes = list(df.iloc[self.col_config["param_row"]]) # all the line, !!! : absolute index
         matched, _ = self.get_matching_columns(noms_colonnes, base_keywords)
-        print("\n🔍 MATCHED COLUMNS POUR '→ all' :")
+
         for kw, correspondances in matched.items():
             print(f"  {kw} → {[nom for _, nom in correspondances]}")
 
@@ -288,22 +327,12 @@ class RowsExtract(BaseExtract):
         super().__init__(excel_path, json_config_path, sheet_name, row_config)
         self.row_config = row_config  # Exemple: {"col_nom_param": 1, "col_valeur": 2, "start_row": 8}
 
-    # INPUT:
-    #   self.df: Excel sheet loaded as a DataFrame.
-    #   self.keywords_valides: List of parameters to extract.
-    #   self.groupes_personnalises: Custom parameter groups (sum of several parameters).
-    #   self.row_config: Dict defining key columns (e.g. col_nom_param, col_valeur).
-    #   self.json_config_path: Path to the JSON config used for input/output mappings.
-    #
-    # OUTPUT:
-    #   self.resultats: Dict mapping each sample code to its extracted parameters (and group values).
     def extract(self):
         self.resultats = {}
         df = self.df
         cfg = self.row_config
 
         nom_row = cfg["nom_row"]
-        nom_col = cfg["nom_col"]
         param_col = cfg["param_col"]
         param_row = cfg["param_row"]
         data_start_col = cfg["data_start_col"]
@@ -325,7 +354,8 @@ class RowsExtract(BaseExtract):
             ])
 
         base_keywords = list(set(base_keywords))
-        noms_parametres = df.iloc[param_row:, param_col].tolist() #all cells from param_col from nom_row
+        noms_parametres = df.iloc[param_row:, param_col].tolist() # all cells from param_col from nom_row
+                                                                    # !!! : relative index
         matched, _ = self.get_matching_columns(noms_parametres, base_keywords)
 
         # all_correspondances output - {KW → all : [(idx, nom),(idx, nom),()]}
@@ -400,33 +430,5 @@ class RowsExtract(BaseExtract):
 # ========================================== DEBUGGING TEST =========================================================
 # ========================================== DEBUGGING TEST =========================================================
 # ========================================== DEBUGGING TEST =========================================================
-if __name__ == "__main__":
-    file_path = os.path.join(os.path.dirname(__file__), "Résultats Eurofins.xlsm")
-    if not os.path.exists(file_path):
-        print("❌ Fichier 'Résultats Eurofins.xlsm' introuvable à côté du script.")
-        exit()
-
-    config = {
-        "cell_nom_echantillon": "B6",
-        "cell_parametres": "D5",
-        "cell_data_start": "D6"
-    }
-
-    keywords_path = os.path.join(os.path.dirname(__file__), "keywords.json")
-    keywords_valides = BaseExtract.load_keywords_ui1(keywords_path)
-
-    df = pd.read_excel(file_path, sheet_name=0, header=None)
-    row_start, col_start = cell_to_index(config["cell_parametres"])
-
-    row = df.iloc[row_start]
-    matched, multi = BaseExtract.get_matching_columns(row, keywords_valides)
-
-    print("\n--- Résultat final ---")
-    for kw, matches in matched.items():
-        for col_idx, nom_col in matches:
-            print(f"{kw}  →     {col_idx}     :     '{nom_col}'")
-
-    if multi:
-        print("\n🔁 Keywords with multiple matches (→ all):")
-        for kw in multi:
-            print(f"{kw} → all  →     '', 'all'")
+# if __name__ == "__main__":
+#     file_path = os.path.join(os.path.dirname(__file__), ".xlsm")

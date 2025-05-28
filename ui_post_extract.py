@@ -3,6 +3,7 @@ from tkinter import filedialog, messagebox
 import json
 import os
 import sys
+import re
 
 from extract_utils import convert_config_to_indices, values_lq_or_none
 from analysis_extract import RowsExtract, ColumnsExtract
@@ -30,12 +31,21 @@ def load_last_config():
             return json.load(f).get("last_config", "")
     return ""
 
-
-def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, resultats_artelia, sheet_name, df, mapping_all, config_extraction=None, input_zone_gauche=None):
+# INPUT:
+#   matched_columns (dict[str, list[str]]): Mapping of keywords to matching column names from initial detection.
+#   extraction_type (str): Type of extraction, either "colonnes" or "lignes".
+#   excel_file (str): Path to the original Excel file.
+#   resultats_artelia (object): Object containing the global mapping and potential shared attributes.
+#   sheet_name (str): Name of the Excel sheet to work on.
+#   df (pd.DataFrame): The loaded Excel sheet as a pandas DataFrame.
+#   mapping_all (dict): Global mapping of all keyword-column matches (can be overwritten inside function).
+#   config_extraction (dict | None): Optional extraction configuration containing cell indices (col/row positions).
+#   input_zone_gauche (list[str] | None): List of available keywords/columns to be displayed in the left UI zone.
+# OUTPUT:
+#   None (opens an interactive UI for selection, editing, and exporting parameters, and may write a config JSON file).
+def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, sheet_name, config_extraction=None, input_zone_gauche=None):
     affichage_mapping = {}
     libelles_formates = input_zone_gauche.copy()
-    matched_original = matched_columns.copy()
-    mapping_all = getattr(resultats_artelia, 'mapping_all', {})
     config_kw = []
 
     for kw, colonnes in matched_columns.items():
@@ -49,10 +59,9 @@ def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, resulta
         if not path:
             return
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                data = json.load(f)
+            with open(path, "r", encoding="utf-8") as file:
+                data = json.load(file)
                 # keyword_valides part
-                mots = data.get("keywords_valides", [])
                 config_kw.clear()
                 config_kw.extend(data.get("keywords_valides", []))
                 # groupes_personalises part
@@ -62,8 +71,6 @@ def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, resulta
                 config_path.set(path)
                 save_last_config(path)
 
-
-
                 # Affichage des zones
                 zone_droite.delete(0, tk.END)
                 zone_gauche.delete(0, tk.END)
@@ -72,27 +79,27 @@ def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, resulta
                     zone_droite.insert(0, "Code Artelia")
 
                 # Affiche tout à gauche par défaut
-                for label in libelles_formates:
-                    ref = affichage_mapping.get(label, label)
+                for label_zone in libelles_formates:
+                    ref = affichage_mapping.get(label_zone, label_zone)
                     if isinstance(ref, tuple):
                         ref_str = f"{ref[0]} → {ref[1]}"
                     else:
                         ref_str = ref
 
                     if ref_str in config_kw:
-                        zone_droite.insert(tk.END, label)
+                        zone_droite.insert(tk.END, label_zone)
                     else:
-                        zone_gauche.insert(tk.END, label)
+                        zone_gauche.insert(tk.END, label_zone)
 
                 # Ajout des groupes
-                for nom_groupe in groupes:
-                    if nom_groupe not in zone_droite.get(0, tk.END):
-                        zone_droite.insert(tk.END, nom_groupe)
+                for group_name  in groupes:
+                    if group_name  not in zone_droite.get(0, tk.END):
+                        zone_droite.insert(tk.END, group_name )
 
                 afficher_groupes()
 
-        except Exception as e:
-            messagebox.showerror("Erreur", f"Impossible de charger le fichier :\n{e}")
+        except Exception as err:
+            messagebox.showerror("Erreur", f"Impossible de charger le fichier :\n{err}")
 
     def ajouter_mots():
         for i in zone_gauche.curselection()[::-1]:
@@ -137,8 +144,6 @@ def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, resulta
 
     def extraire_en_excel():
         selection = list(zone_droite.get(0, tk.END))
-        print("📦 Zone droite sélection :", list(zone_droite.get(0, tk.END)))
-        print("📦 Groupes actuels :", groupes)
         if not selection:
             messagebox.showwarning("Aucun paramètre", "Veuillez sélectionner au moins un paramètre à exporter.")
             return
@@ -149,8 +154,6 @@ def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, resulta
             "ordre_selection": selection
         }
 
-        print("EXTRAIRE EN EXCEL - START : Groupes =", groupes)
-
         # Sauvegarde JSON temporaire
         with open(temp_json, "w", encoding="utf-8") as f:
             json.dump(output_zone_droite, f, indent=2, ensure_ascii=False)
@@ -158,40 +161,26 @@ def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, resulta
         # Suite : config + lancement extraction
         config = None
         try:
-            print("📋 Fichier Excel =", excel_file)
-            print("📋 Sheet name =", sheet_name)
-            print("📋 Type extraction =", extraction_type)
-            print("📋 Config extraction brut =", config_extraction)
-
             if extraction_type.lower() in ["colonnes", "lignes"]:
                 config = convert_config_to_indices(config_extraction)
-
-            print("🧪 DEBUG config_extraction brut:", config_extraction)
-            print("🧪 DEBUG config transformé:", config)
 
             # Lancement de l'extraction
             try:
                 if extraction_type.lower() == "colonnes":
-                    print("⚙️ Création ColumnsExtract")
                     extractor = ColumnsExtract(excel_file, temp_json, sheet_name, col_config=config)
                 else:
-                    print("⚙️ Création RowsExtract")
                     extractor = RowsExtract(excel_file, temp_json, sheet_name, row_config=config)
 
-                print("✅ Extractor created:", extractor)
+                print("Extractor created:", extractor)
             except Exception as e:
-                print("❌ Erreur lors de l'instanciation de l'extracteur :", e)
                 messagebox.showerror("Erreur instanciation extracteur", f"{e}")
                 return
 
-
             extractor.load_keywords_ui2()
-            print("✔️ load_keywords terminé")
             extractor.load_data()
-            print("✔️ load_data terminé")
             extractor.extract()
-            print("✔️ extract terminé")
-            extractor.export()
+            output_path = extractor.export()
+            messagebox.showinfo("Export terminé", f"Le fichier a été généré avec succès :\n{output_path}")
 
         except Exception as e:
             messagebox.showerror("Erreur config_extraction", f"Erreur :\n{e}")
@@ -207,10 +196,6 @@ def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, resulta
 
             selection = listbox.curselection()
             mots_selectionnes = [listbox.get(i) for i in selection]
-
-            for i in selection:
-                item = listbox.get(i)
-                mots_selectionnes.append(item)
 
             if not mots_selectionnes:
                 messagebox.showwarning("Aucun mot-clé", "Sélectionnez au moins un mot-clé.")
@@ -303,7 +288,7 @@ def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, resulta
     fenetre = tk.Toplevel()
 
     fenetre.title("Sélection des paramètres à extraire")
-    fenetre.geometry("550x750")
+    fenetre.geometry("550x700")
 
     config_path = tk.StringVar(value="config_extract.json")
     groupes = {}
@@ -378,7 +363,7 @@ def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, resulta
                 config = convert_config_to_indices(config_extraction)
                 correspondances_input = {
                     f"{kw} → ({idx}, {nom})": [(idx, nom)]
-                    for kw, correspondances in matched_original.items()
+                    for kw, correspondances in matched_columns.items()
                     for idx, nom in correspondances
                 }
 
@@ -410,7 +395,15 @@ def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, resulta
                 else:
                     code = extractor.df.iat[config["nom_row"], idx_random]
 
-                texte = f"🔍 Code : {code} | {kw.split('→', 1)[-1].strip()} | {val}"
+                val = "None" if val == "" else val
+                match_val = re.search(r'\(([^()]+)\)', val)
+                if match_val:
+                    val = match_val.group(1)
+                else:
+                    val = val
+                kw_split = kw.split('→', 1)[-1].strip()
+                kw_final = kw_split.replace("- (mg/kg M.S.)", "")
+                texte = f"Code : {code} | {kw_final} | {val}"
 
             else:
                 texte = "⚠️ Type d'extraction non reconnu."
@@ -450,6 +443,7 @@ def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, resulta
     # == INIT ==
     config_kw = []
     affichage_mapping.clear()
+    last_path = load_last_config()
 
     for label in input_zone_gauche:
         if label not in libelles_formates:
@@ -460,6 +454,18 @@ def ouvrir_ui_post_extract(matched_columns, extraction_type, excel_file, resulta
                 affichage_mapping[label] = (kw, "all")
             libelles_formates.append(label)
 
+    if last_path:
+        config_path.set(last_path)
+        try:
+            with open(last_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            config_kw.clear()
+            config_kw.extend(data.get("keywords_valides", []))
+            groupes.clear()
+            groupes.update(data.get("groupes_personnalises", {}))
+        except Exception as e:
+            print(f"Erreur au chargement du dernier fichier config : {e}")
 
     # Affichage des zones
     zone_droite.delete(0, tk.END)

@@ -1,6 +1,6 @@
 {
-  "cell_nom_echantillon": "B6",
-  "cell_parametres": "D5",
-  "cell_data_start": "D6",
+  "cell_nom_echantillon": "E8",
+  "cell_parametres": "A11",
+  "cell_data_start": "E11",
   "optionnels": {}
 }

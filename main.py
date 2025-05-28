@@ -180,7 +180,6 @@ class ExtractApp:
             self.label_excel.config(text=os.path.basename(file_path), fg="black")
 
             try:
-                import pandas as pd
                 sheets = pd.ExcelFile(file_path).sheet_names
                 self.menu_sheets["values"] = sheets
                 self.sheet_var.set(sheets[0])  # valeur par défaut = première feuille
@@ -402,10 +401,7 @@ class ExtractApp:
                 matched_columns=matched,
                 extraction_type=extraction_type,
                 excel_file=self.excel_file,
-                resultats_artelia=None,
                 sheet_name=sheet_name,
-                df=None,
-                mapping_all={},  # pas encore défini à ce stade
                 config_extraction=config_extraction,
                 input_zone_gauche=input_zone_gauche
             )
@@ -420,7 +416,7 @@ class ExtractApp:
             with open(FICHIER_SESSION, "w", encoding="utf-8") as f:
                 json.dump({"keyword_file": self.keyword_file}, f)
         except Exception as e:
-            print(f"⚠️ Erreur sauvegarde session : {e}")
+            print(f"Erreur sauvegarde session : {e}")
 
     def charger_derniere_session(self):
         if not os.path.exists(FICHIER_SESSION):
@@ -434,7 +430,7 @@ class ExtractApp:
                         self.keywords = json.load(kf)
                     self.label_keywords.config(text=os.path.basename(self.keyword_file), fg="black")
         except Exception as e:
-            print(f"⚠️ Erreur chargement session : {e}")
+            print(f"Erreur chargement session : {e}")
 
 
         if os.path.exists(FICHIER_LAST_TYPE_CONFIG):
@@ -444,12 +440,10 @@ class ExtractApp:
 
                 if self.type_var.get().lower() == "lignes":
                     self.row_config = config
-                    print("🔁 Configuration lignes rechargée :", self.row_config)
                 else:
                     self.col_config = config
-                    print("🔁 Configuration colonnes rechargée :", self.col_config)
             except Exception as e:
-                print(f"⚠️ Erreur chargement dernière config extraction : {e}")
+                print(f"Erreur chargement dernière config extraction : {e}")
 
 
 

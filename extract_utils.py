@@ -1,17 +1,7 @@
 import unicodedata
 import re
-import json
-import os
 import pandas as pd
 
-
-def extraire_valeur(cellule):
-    if isinstance(cellule, pd.Series):
-        cellule = cellule.dropna().astype(str).str.strip()
-        return cellule.iloc[0] if not cellule.empty else None
-    if pd.isna(cellule) or str(cellule).strip() == "":
-        return None
-    return str(cellule).strip()
 
 def normalize(text):
     if text is None or not isinstance(text, str):
@@ -43,13 +33,6 @@ def convert_config_to_indices(config_dict):
         "optionnels": optionnels
     }
 
-def col_idx_to_excel_letter(idx):
-    letter = ''
-    while idx >= 0:
-        letter = chr(idx % 26 + 65) + letter
-        idx = idx // 26 - 1
-    return letter
-
 def cell_to_index(cell: str) -> tuple[int, int]:
     letters = ''.join([c for c in cell if c.isalpha()])
     digits = ''.join([c for c in cell if c.isdigit()])
@@ -62,24 +45,6 @@ def cell_to_index(cell: str) -> tuple[int, int]:
     row = int(digits) - 1
 
     return row, col
-
-def sauvegarder_json(path, data):
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-
-def charger_json(path: str) -> dict:
-    if not os.path.exists(path):
-        return {}
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-def charger_groupes_parametres(fichier="sum.json"):
-    if not os.path.exists(fichier):
-        sauvegarder_json(fichier, {})
-    return charger_json(fichier)
-
-def sauvegarder_groupes_parametres(groupes, fichier="sum.json"):
-    sauvegarder_json(fichier, groupes)
 
 
 def values_lq_or_none(val):
